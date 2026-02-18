@@ -1,0 +1,219 @@
+iOS 滑雪轨迹 Tracker（本机运行版）执行计划
+0. 目标与边界
+
+目标（MVP-Device Only）
+
+在你的 iPhone 16 Pro Max 上通过 Xcode 安装运行（无需 App Store）。
+
+支持：请求定位权限 → Start/Stop 录制 → 地图显示轨迹折线 → 统计指标展示 → 本地保存一次 session 数据（JSON）→ 下次可回看最近一次。
+
+前台可用；后台/锁屏持续记录作为可选增强（V1.1）。
+
+非目标（本阶段不做）
+
+Apple Watch、HealthKit
+
+自动分段（缆车/滑行识别）
+
+云端同步、账号系统
+
+商业化/上架合规完整流程（但仍会做基本隐私说明字段）
+
+1. 技术栈与项目结构
+
+语言/框架
+
+Swift + SwiftUI
+
+CoreLocation
+
+MapKit
+
+本地存储：文件系统（JSON）优先（比 CoreData 更快落地）
+
+项目结构（建议）
+
+App/：入口、依赖注入
+
+Location/：LocationTracker（CLLocationManager wrapper）
+
+Model/：TrackPoint、TrackSession
+
+Storage/：SessionStore（读写 JSON）
+
+UI/：ContentView、TrackMapView、StatsView、HistoryView（可选）
+
+2. Milestone A：工程可编译 & 真机定位跑通（Day 1）
+A1. Xcode 工程创建
+
+新建 iOS App（SwiftUI）
+
+配置 Bundle Identifier（唯一）
+
+Signing：选择你的 Apple ID Team（免费也可）
+
+A2. Info.plist 权限说明（必须）
+
+添加字段：
+
+NSLocationWhenInUseUsageDescription = “用于记录滑雪轨迹与统计距离/速度/海拔”
+可选（若做后台）：
+
+NSLocationAlwaysAndWhenInUseUsageDescription
+
+A3. LocationTracker（最小实现）
+
+要求：
+
+请求权限 requestWhenInUseAuthorization()
+
+desiredAccuracy = kCLLocationAccuracyBestForNavigation
+
+activityType = .fitness
+
+采样策略：使用 startUpdatingLocation()
+
+数据过滤：丢弃 horizontalAccuracy <= 0 或 > 20m 的点
+
+轨迹点数组 points: [CLLocation] 发布给 UI
+
+验收
+
+真机运行后，点“Request Permission”弹系统授权弹窗并成功获取定位
+
+点 Start 后移动手机，points 增长，且能显示当前位置（或 marker）
+
+3. Milestone B：地图轨迹渲染 + 基础统计（Day 1–2）
+B1. MapKit 绘制折线
+
+用 MapPolyline（SwiftUI Map）
+
+points >= 2 时绘制折线
+
+显示最后一个点 Marker
+
+地图自动跟随最后点（camera 更新，距离 800–1500m）
+
+B2. 统计指标（实时）
+
+实时计算：
+
+duration（Start 时间到当前）
+
+totalDistanceMeters（累积相邻点距离，过滤瞬移：单次 > 100m 不计）
+
+maxSpeed（m/s 转 km/h；仅 speed >= 0 且有限值）
+
+maxAltitude（海拔最大值）
+可选：avgSpeed = totalDistance / duration
+
+验收
+
+UI 展示距离/时长/最大速度/最高海拔，并随移动更新
+
+轨迹折线与实际移动方向大致一致
+
+4. Milestone C：本地保存与回放（Day 2–3）
+C1. 数据模型（可序列化）
+
+定义：
+
+TrackPoint: lat, lon, altitude, hAcc, vAcc, speed, course, timestamp
+
+TrackSession: id(UUID), startedAt, endedAt, points:[TrackPoint], deviceInfo(可选)
+
+C2. 存储层 SessionStore（JSON 文件）
+
+保存路径：Documents/last_session.json
+
+Stop 时落盘（写入 TrackSession）
+
+App 启动时尝试加载 last_session.json 并可“回看”
+
+C3. 回放 UI（最简单）
+
+一个按钮 “Load Last Session”
+
+加载后在地图上绘制 session polyline，并显示 session stats（总距离、总时长、max speed、max altitude）
+
+验收
+
+Stop 后杀掉 App 再打开，仍可加载并看到上一条轨迹与统计
+
+JSON 文件可通过 Xcode Devices → Download Container 导出验证
+
+5. Milestone D：可选增强（V1.1，Day 3–5）
+
+如果你确实需要“滑雪时锁屏也记录”，做这个分支。否则先跳过，等 MVP 稳定后再做。
+
+D1. 后台定位
+
+Capabilities → Background Modes → 勾选 Location updates
+
+在 tracker：
+
+allowsBackgroundLocationUpdates = true
+
+pausesLocationUpdatesAutomatically = false
+
+权限升级：在 UI 引导用户到设置开 “Always”（或直接请求 Always）
+
+D2. 省电/采样策略（基础）
+
+仍保持 distanceFilter（3–10m）
+
+若速度很低（< 1m/s）时降低更新频率（可用 distanceFilter 动态调大）
+
+验收
+
+锁屏/切后台 5–10 分钟后仍有点记录，轨迹连续
+
+电量消耗可接受（至少不出现“每分钟掉很多”那种异常）
+
+6. 风险与对策（给执行 AI 的约束）
+
+飘点/瞬移：必须做 accuracy 过滤 + 单步距离阈值过滤（默认 100m）
+
+权限失败：UI 必须显示当前授权状态（Denied 时提示去 Settings 打开）
+
+速度/海拔不可信：显示时注明“基于设备定位估算”；并在统计时过滤 speed 的异常值（例如 > 60m/s 直接忽略）
+
+版本差异：MapKit SwiftUI API 在不同 iOS 版本可能有差异；若编译报错，优先使用 Map + MKPolyline 的 UIViewRepresentable 兜底实现（作为 fallback 任务）
+
+7. 交付物清单（执行 AI 最终应产出）
+
+可运行 Xcode 工程（SwiftUI）
+
+关键文件：
+
+LocationTracker.swift
+
+TrackModels.swift（TrackPoint/TrackSession）
+
+SessionStore.swift
+
+TrackMapView.swift
+
+ContentView.swift
+
+README（一页即可）：
+
+如何跑到真机
+
+权限设置
+
+如何导出 last_session.json
+
+8. 验收测试脚本（你自己照着测）
+
+室外开阔处打开 App → Request Permission → Start
+
+走 200–500 米 → Stop
+
+确认距离接近实际（误差允许 5–15%）
+
+退出 App（杀进程）→ 重新打开 → Load Last Session
+
+轨迹能重绘、统计一致
+
+（若做后台）Start → 锁屏 5 分钟走动 → 解锁 → points 增长且轨迹连续

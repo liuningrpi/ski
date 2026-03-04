@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import Combine
+import UIKit
 
 // MARK: - LocationTracker
 
@@ -48,11 +49,17 @@ final class LocationTracker: NSObject, ObservableObject {
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.activityType = .fitness
         locationManager.distanceFilter = defaultDistanceFilter
-        // Background support (V1.1)
-        locationManager.allowsBackgroundLocationUpdates = true
         locationManager.pausesLocationUpdatesAutomatically = false
-        locationManager.showsBackgroundLocationIndicator = true
         authorizationStatus = locationManager.authorizationStatus
+    }
+
+    /// Enable background location updates (call after authorization is granted)
+    private func configureBackgroundUpdates() {
+        // Only enable background updates if authorized for "Always"
+        if authorizationStatus == .authorizedAlways {
+            locationManager.allowsBackgroundLocationUpdates = true
+            locationManager.showsBackgroundLocationIndicator = true
+        }
     }
 
     // MARK: - Public Methods
@@ -136,6 +143,7 @@ extension LocationTracker: CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         DispatchQueue.main.async {
             self.authorizationStatus = manager.authorizationStatus
+            self.configureBackgroundUpdates()
         }
     }
 

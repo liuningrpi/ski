@@ -4,22 +4,22 @@ import Combine
 // MARK: - SessionStore
 
 /// Handles reading and writing TrackSession data as JSON files
-/// in the app's Documents directory.
+/// in the app's Documents directory. Supports multiple sessions.
 final class SessionStore: ObservableObject {
 
     // MARK: - Published
 
-    /// The last saved session, loaded on init
-    @Published var lastSession: TrackSession?
+    /// All saved sessions, sorted by date (newest first)
+    @Published var sessions: [TrackSession] = []
 
     // MARK: - Constants
 
-    private static let fileName = "last_session.json"
+    private static let fileName = "ski_sessions.json"
 
     // MARK: - Init
 
     init() {
-        lastSession = Self.load()
+        sessions = Self.loadAll()
     }
 
     // MARK: - File Path
@@ -31,18 +31,25 @@ final class SessionStore: ObservableObject {
 
     // MARK: - Save
 
-    /// Save a session to Documents/last_session.json
+    /// Save a new session
     func save(_ session: TrackSession) {
+        var allSessions = sessions
+        allSessions.insert(session, at: 0) // Add to beginning (newest first)
+        saveAll(allSessions)
+    }
+
+    /// Save all sessions to disk
+    private func saveAll(_ allSessions: [TrackSession]) {
         do {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(session)
+            let data = try encoder.encode(allSessions)
             try data.write(to: Self.fileURL, options: .atomic)
             DispatchQueue.main.async {
-                self.lastSession = session
+                self.sessions = allSessions
             }
-            print("[SessionStore] Saved session with \(session.points.count) points to \(Self.fileURL.path)")
+            print("[SessionStore] Saved \(allSessions.count) sessions to \(Self.fileURL.path)")
         } catch {
             print("[SessionStore] Save failed: \(error)")
         }
@@ -50,33 +57,70 @@ final class SessionStore: ObservableObject {
 
     // MARK: - Load
 
-    /// Load the last session from disk
-    static func load() -> TrackSession? {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            print("[SessionStore] No saved session found.")
-            return nil
+    /// Load all sessions from disk
+    static func loadAll() -> [TrackSession] {
+        // First try to load from new format
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let sessions = try decoder.decode([TrackSession].self, from: data)
+                print("[SessionStore] Loaded \(sessions.count) sessions.")
+                return sessions
+            } catch {
+                print("[SessionStore] Load failed: \(error)")
+            }
         }
-        do {
-            let data = try Data(contentsOf: fileURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let session = try decoder.decode(TrackSession.self, from: data)
-            print("[SessionStore] Loaded session with \(session.points.count) points.")
-            return session
-        } catch {
-            print("[SessionStore] Load failed: \(error)")
-            return nil
+
+        // Try to migrate from old single-session format
+        let oldFileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("last_session.json")
+        if FileManager.default.fileExists(atPath: oldFileURL.path) {
+            do {
+                let data = try Data(contentsOf: oldFileURL)
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let session = try decoder.decode(TrackSession.self, from: data)
+                print("[SessionStore] Migrated 1 session from old format.")
+                // Delete old file after migration
+                try? FileManager.default.removeItem(at: oldFileURL)
+                return [session]
+            } catch {
+                print("[SessionStore] Migration failed: \(error)")
+            }
         }
+
+        print("[SessionStore] No saved sessions found.")
+        return []
     }
 
-    /// Reload from disk (e.g., pull-to-refresh)
+    /// Reload from disk
     func reload() {
-        lastSession = Self.load()
+        sessions = Self.loadAll()
     }
 
-    /// Delete the saved session
-    func deleteSaved() {
+    // MARK: - Delete
+
+    /// Delete a specific session
+    func delete(_ session: TrackSession) {
+        var allSessions = sessions
+        allSessions.removeAll { $0.id == session.id }
+        saveAll(allSessions)
+    }
+
+    /// Delete all sessions
+    func deleteAll() {
         try? FileManager.default.removeItem(at: Self.fileURL)
-        lastSession = nil
+        DispatchQueue.main.async {
+            self.sessions = []
+        }
+    }
+
+    // MARK: - Convenience
+
+    /// The most recent session (for backward compatibility)
+    var lastSession: TrackSession? {
+        sessions.first
     }
 }

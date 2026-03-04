@@ -64,7 +64,7 @@ struct TrackMapView: UIViewRepresentable {
         if showEndMarker, let last = coordinates.last {
             let annotation = MKPointAnnotation()
             annotation.coordinate = last
-            annotation.title = "当前位置"
+            annotation.title = SettingsManager.shared.strings.currentLocation
             mapView.addAnnotation(annotation)
         }
 

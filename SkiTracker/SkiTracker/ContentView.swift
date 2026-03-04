@@ -9,8 +9,10 @@ struct ContentView: View {
 
     @EnvironmentObject var tracker: LocationTracker
     @EnvironmentObject var sessionStore: SessionStore
+    @ObservedObject var settings = SettingsManager.shared
 
     @State private var showHistory = false
+    @State private var showSettings = false
     @State private var showStopConfirm = false
     @State private var liveSession: TrackSession?
 
@@ -21,6 +23,8 @@ struct ContentView: View {
     @State private var statsTick: Int = 0
 
     var body: some View {
+        let strings = settings.strings
+
         NavigationStack {
             ZStack(alignment: .bottom) {
                 // Map layer (full screen)
@@ -40,14 +44,21 @@ struct ContentView: View {
                 }
                 .background(.ultraThinMaterial)
             }
-            .navigationTitle("Ski Tracker")
+            .navigationTitle(strings.appTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showHistory = true
-                    } label: {
-                        Image(systemName: "clock.arrow.circlepath")
+                    HStack(spacing: 12) {
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        Button {
+                            showHistory = true
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                        }
                     }
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -57,13 +68,16 @@ struct ContentView: View {
             .sheet(isPresented: $showHistory) {
                 HistoryView()
             }
-            .alert("停止录制？", isPresented: $showStopConfirm) {
-                Button("继续录制", role: .cancel) { }
-                Button("停止并保存", role: .destructive) {
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
+            .alert(strings.stopConfirmTitle, isPresented: $showStopConfirm) {
+                Button(strings.continueRecording, role: .cancel) { }
+                Button(strings.stopAndSave, role: .destructive) {
                     stopAndSave()
                 }
             } message: {
-                Text("当前轨迹将被保存，你可以在历史记录中回看。")
+                Text(strings.stopConfirmMessage)
             }
             .onDisappear {
                 statsTimer?.invalidate()
@@ -96,6 +110,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var liveStatsPanel: some View {
+        let strings = settings.strings
         let _ = statsTick // force refresh
         let session = buildLiveSession()
 
@@ -105,12 +120,12 @@ struct ContentView: View {
                 Circle()
                     .fill(Color.red)
                     .frame(width: 8, height: 8)
-                Text("录制中")
+                Text(strings.recording)
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(.red)
                 Spacer()
-                Text("\(tracker.locations.count) 点")
+                Text("\(tracker.locations.count) \(strings.points)")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -133,6 +148,8 @@ struct ContentView: View {
 
     @ViewBuilder
     private var controlBar: some View {
+        let strings = settings.strings
+
         VStack(spacing: 12) {
             if !tracker.canTrack {
                 // Permission needed
@@ -144,7 +161,7 @@ struct ContentView: View {
                 } label: {
                     HStack {
                         Image(systemName: "stop.fill")
-                        Text("停止录制")
+                        Text(strings.stopRecording)
                     }
                     .font(.headline)
                     .foregroundColor(.white)
@@ -161,7 +178,7 @@ struct ContentView: View {
                 } label: {
                     HStack {
                         Image(systemName: "figure.skiing.downhill")
-                        Text("开始滑雪")
+                        Text(strings.startSkiing)
                     }
                     .font(.headline)
                     .foregroundColor(.white)
@@ -188,13 +205,15 @@ struct ContentView: View {
 
     @ViewBuilder
     private var permissionSection: some View {
+        let strings = settings.strings
+
         VStack(spacing: 8) {
-            Text("需要定位权限才能记录滑雪轨迹")
+            Text(strings.locationPermissionNeeded)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
             if tracker.authorizationStatus == .denied {
-                Button("前往设置开启定位") {
+                Button(strings.goToSettings) {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         UIApplication.shared.open(url)
                     }
@@ -212,7 +231,7 @@ struct ContentView: View {
                 } label: {
                     HStack {
                         Image(systemName: "location.fill")
-                        Text("授权定位")
+                        Text(strings.authorizeLocation)
                     }
                     .font(.headline)
                     .foregroundColor(.white)
@@ -234,9 +253,21 @@ struct ContentView: View {
             Circle()
                 .fill(tracker.canTrack ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
-            Text(tracker.authStatusDescription)
+            Text(authStatusText)
                 .font(.caption2)
                 .foregroundColor(.secondary)
+        }
+    }
+
+    private var authStatusText: String {
+        let strings = settings.strings
+        switch tracker.authorizationStatus {
+        case .notDetermined: return strings.authNotRequested
+        case .restricted: return strings.authRestricted
+        case .denied: return strings.authDenied
+        case .authorizedWhenInUse: return strings.authWhenInUse
+        case .authorizedAlways: return strings.authAlways
+        @unknown default: return strings.authUnknown
         }
     }
 

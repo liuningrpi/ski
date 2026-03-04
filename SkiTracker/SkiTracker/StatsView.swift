@@ -5,6 +5,8 @@ import SwiftUI
 /// Displays skiing statistics in a compact grid layout.
 struct StatsView: View {
 
+    @ObservedObject var settings = SettingsManager.shared
+
     let durationFormatted: String
     let distanceKm: Double
     let maxSpeedKmh: Double
@@ -14,20 +16,23 @@ struct StatsView: View {
     let pointCount: Int
 
     var body: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
         VStack(spacing: 12) {
             // Row 1: Duration & Distance
             HStack(spacing: 16) {
                 StatCard(
                     icon: "timer",
-                    title: "时长",
+                    title: strings.duration,
                     value: durationFormatted,
                     unit: ""
                 )
                 StatCard(
                     icon: "point.topleft.down.to.point.bottomright.curvepath",
-                    title: "距离",
-                    value: String(format: "%.2f", distanceKm),
-                    unit: "km"
+                    title: strings.distance,
+                    value: settings.formatDistance(distanceKm),
+                    unit: units.distanceUnit
                 )
             }
 
@@ -35,15 +40,15 @@ struct StatsView: View {
             HStack(spacing: 16) {
                 StatCard(
                     icon: "gauge.with.needle.fill",
-                    title: "最高速度",
-                    value: String(format: "%.1f", maxSpeedKmh),
-                    unit: "km/h"
+                    title: strings.maxSpeed,
+                    value: settings.formatSpeed(maxSpeedKmh),
+                    unit: units.speedUnit
                 )
                 StatCard(
                     icon: "speedometer",
-                    title: "平均速度",
-                    value: String(format: "%.1f", avgSpeedKmh),
-                    unit: "km/h"
+                    title: strings.avgSpeed,
+                    value: settings.formatSpeed(avgSpeedKmh),
+                    unit: units.speedUnit
                 )
             }
 
@@ -51,20 +56,20 @@ struct StatsView: View {
             HStack(spacing: 16) {
                 StatCard(
                     icon: "mountain.2.fill",
-                    title: "最高海拔",
-                    value: String(format: "%.0f", maxAltitude),
-                    unit: "m"
+                    title: strings.maxAltitude,
+                    value: settings.formatAltitude(maxAltitude),
+                    unit: units.altitudeUnit
                 )
                 StatCard(
                     icon: "arrow.down.right",
-                    title: "海拔落差",
-                    value: String(format: "%.0f", elevationDrop),
-                    unit: "m"
+                    title: strings.elevationDrop,
+                    value: settings.formatAltitude(elevationDrop),
+                    unit: units.altitudeUnit
                 )
             }
 
             // Point count (subtle)
-            Text("轨迹点数: \(pointCount)")
+            Text("\(strings.trackPoints): \(pointCount)")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }

@@ -1,9 +1,71 @@
 import SwiftUI
 import CoreLocation
 
+// MARK: - Day Group Model
+
+struct DayGroup: Identifiable {
+    let id: String // date string as ID
+    let date: Date
+    let sessions: [TrackSession]
+
+    var totalDistance: Double {
+        sessions.reduce(0) { $0 + $1.totalDistanceKm }
+    }
+
+    var totalDuration: TimeInterval {
+        sessions.reduce(0) { $0 + $1.durationSeconds }
+    }
+
+    var totalDescent: Double {
+        sessions.reduce(0) { $0 + $1.elevationDrop }
+    }
+
+    var maxSpeed: Double {
+        sessions.map { $0.maxSpeedKmh }.max() ?? 0
+    }
+
+    var avgSpeed: Double {
+        guard totalDuration > 0 else { return 0 }
+        let totalDistanceM = sessions.reduce(0) { $0 + $1.totalDistanceMeters }
+        return (totalDistanceM / totalDuration) * 3.6
+    }
+
+    var maxDescentRun: Double {
+        sessions.map { $0.elevationDrop }.max() ?? 0
+    }
+
+    var fastestRunSpeed: Double {
+        sessions.map { $0.maxSpeedKmh }.max() ?? 0
+    }
+
+    var longestRunDistance: Double {
+        sessions.map { $0.totalDistanceKm }.max() ?? 0
+    }
+
+    var avgRunDistance: Double {
+        guard sessions.count > 0 else { return 0 }
+        return totalDistance / Double(sessions.count)
+    }
+
+    var maxAltitude: Double {
+        sessions.map { $0.maxAltitude }.max() ?? 0
+    }
+
+    var totalDurationFormatted: String {
+        let total = Int(totalDuration)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
+        return String(format: "%02d:%02d", m, s)
+    }
+}
+
 // MARK: - HistoryView
 
-/// Displays all saved sessions with ability to view details.
+/// Displays all saved sessions grouped by day.
 struct HistoryView: View {
 
     @EnvironmentObject var sessionStore: SessionStore
@@ -11,7 +73,24 @@ struct HistoryView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedSession: TrackSession?
+    @State private var selectedDayGroup: DayGroup?
     @State private var showDeleteAllConfirm = false
+
+    private var dayGroups: [DayGroup] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: sessionStore.sessions) { session in
+            calendar.startOfDay(for: session.startedAt)
+        }
+        return grouped.map { (date, sessions) in
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            return DayGroup(
+                id: dateFormatter.string(from: date),
+                date: date,
+                sessions: sessions.sorted { $0.startedAt > $1.startedAt }
+            )
+        }.sorted { $0.date > $1.date }
+    }
 
     var body: some View {
         let strings = settings.strings
@@ -21,7 +100,7 @@ struct HistoryView: View {
                 if sessionStore.sessions.isEmpty {
                     emptyState
                 } else {
-                    sessionList
+                    dayListView
                 }
             }
             .navigationTitle(strings.history)
@@ -53,64 +132,98 @@ struct HistoryView: View {
             .sheet(item: $selectedSession) { session in
                 SessionDetailView(session: session)
             }
+            .sheet(item: $selectedDayGroup) { dayGroup in
+                DaySummaryView(dayGroup: dayGroup)
+            }
         }
     }
 
-    // MARK: - Session List
+    // MARK: - Day List View
 
     @ViewBuilder
-    private var sessionList: some View {
+    private var dayListView: some View {
         let strings = settings.strings
         let units = settings.unitSystem
 
         List {
-            ForEach(sessionStore.sessions) { session in
-                Button {
-                    selectedSession = session
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(session.startedAt, style: .date)
-                                .font(.headline)
+            ForEach(dayGroups) { dayGroup in
+                Section {
+                    // Day summary button
+                    Button {
+                        selectedDayGroup = dayGroup
+                    } label: {
+                        HStack {
+                            Image(systemName: "chart.bar.fill")
+                                .foregroundColor(.blue)
+                            Text(strings.daySummary)
                                 .foregroundColor(.primary)
-                            HStack {
-                                Text(session.startedAt, style: .time)
-                                if let end = session.endedAt {
-                                    Text("-")
-                                    Text(end, style: .time)
-                                }
-                            }
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text("\(settings.formatDistance(session.totalDistanceKm)) \(units.distanceUnit)")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primary)
-                            Text(session.durationFormatted)
+                            Spacer()
+                            Text("\(dayGroup.sessions.count) \(strings.runsCount)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
+
+                    // Individual runs
+                    ForEach(dayGroup.sessions) { session in
+                        Button {
+                            selectedSession = session
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(session.startedAt, style: .time)
+                                        if let end = session.endedAt {
+                                            Text("-")
+                                            Text(end, style: .time)
+                                        }
+                                    }
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+
+                                    Text(session.durationFormatted)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text("\(settings.formatDistance(session.totalDistanceKm)) \(units.distanceUnit)")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                    Text("\(settings.formatSpeed(session.maxSpeedKmh)) \(units.speedUnit)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                    .onDelete { offsets in
+                        deleteSession(from: dayGroup, at: offsets)
+                    }
+                } header: {
+                    Text(dayGroup.date, style: .date)
+                        .font(.headline)
                 }
             }
-            .onDelete(perform: deleteSession)
         }
         .listStyle(.insetGrouped)
     }
 
-    private func deleteSession(at offsets: IndexSet) {
+    private func deleteSession(from dayGroup: DayGroup, at offsets: IndexSet) {
         for index in offsets {
-            let session = sessionStore.sessions[index]
+            let session = dayGroup.sessions[index]
             sessionStore.delete(session)
         }
     }
@@ -134,6 +247,182 @@ struct HistoryView: View {
                 .multilineTextAlignment(.center)
         }
         .padding()
+    }
+}
+
+// MARK: - Day Summary View
+
+struct DaySummaryView: View {
+
+    let dayGroup: DayGroup
+
+    @ObservedObject var settings = SettingsManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Date header
+                    VStack(spacing: 4) {
+                        Text(dayGroup.date, style: .date)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        Text("\(dayGroup.sessions.count) \(strings.runsCount)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 8)
+
+                    // Summary Stats Grid
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible())
+                    ], spacing: 12) {
+                        // Total Distance
+                        SummaryCard(
+                            icon: "point.topleft.down.to.point.bottomright.curvepath",
+                            title: strings.totalDistance,
+                            value: settings.formatDistance(dayGroup.totalDistance),
+                            unit: units.distanceUnit,
+                            color: .blue
+                        )
+
+                        // Total Duration
+                        SummaryCard(
+                            icon: "timer",
+                            title: strings.totalDuration,
+                            value: dayGroup.totalDurationFormatted,
+                            unit: "",
+                            color: .green
+                        )
+
+                        // Total Descent
+                        SummaryCard(
+                            icon: "arrow.down.right",
+                            title: strings.totalDescent,
+                            value: settings.formatAltitude(dayGroup.totalDescent),
+                            unit: units.altitudeUnit,
+                            color: .orange
+                        )
+
+                        // Max Speed
+                        SummaryCard(
+                            icon: "gauge.with.needle.fill",
+                            title: strings.maxSpeedDay,
+                            value: settings.formatSpeed(dayGroup.maxSpeed),
+                            unit: units.speedUnit,
+                            color: .red
+                        )
+
+                        // Avg Speed
+                        SummaryCard(
+                            icon: "speedometer",
+                            title: strings.avgSpeedDay,
+                            value: settings.formatSpeed(dayGroup.avgSpeed),
+                            unit: units.speedUnit,
+                            color: .purple
+                        )
+
+                        // Max Descent Single Run
+                        SummaryCard(
+                            icon: "mountain.2.fill",
+                            title: strings.maxDescentRun,
+                            value: settings.formatAltitude(dayGroup.maxDescentRun),
+                            unit: units.altitudeUnit,
+                            color: .indigo
+                        )
+
+                        // Longest Run
+                        SummaryCard(
+                            icon: "ruler",
+                            title: strings.longestRun,
+                            value: settings.formatDistance(dayGroup.longestRunDistance),
+                            unit: units.distanceUnit,
+                            color: .teal
+                        )
+
+                        // Avg Distance per Run
+                        SummaryCard(
+                            icon: "divide",
+                            title: strings.avgRunDistance,
+                            value: settings.formatDistance(dayGroup.avgRunDistance),
+                            unit: units.distanceUnit,
+                            color: .cyan
+                        )
+                    }
+                    .padding(.horizontal)
+
+                    // Max Altitude
+                    HStack {
+                        Image(systemName: "mountain.2.fill")
+                            .foregroundColor(.brown)
+                        Text(strings.maxAltitude)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(settings.formatAltitude(dayGroup.maxAltitude)) \(units.altitudeUnit)")
+                            .fontWeight(.semibold)
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+
+                    Spacer()
+                }
+            }
+            .navigationTitle(strings.daySummary)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(strings.close) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Summary Card
+
+struct SummaryCard: View {
+    let icon: String
+    let title: String
+    let value: String
+    let unit: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                Spacer()
+            }
+
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .monospacedDigit()
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
     }
 }
 

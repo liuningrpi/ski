@@ -218,6 +218,55 @@ struct LocalizedStrings {
     var unitsLabel: String {
         language == .chinese ? "单位" : "Units"
     }
+
+    // Day Summary
+    var daySummary: String {
+        language == .chinese ? "当日总结" : "Day Summary"
+    }
+
+    var runs: String {
+        language == .chinese ? "趟数" : "Runs"
+    }
+
+    var totalDistance: String {
+        language == .chinese ? "总距离" : "Total Distance"
+    }
+
+    var totalDuration: String {
+        language == .chinese ? "总时长" : "Total Duration"
+    }
+
+    var totalDescent: String {
+        language == .chinese ? "总下降" : "Total Descent"
+    }
+
+    var maxDescentRun: String {
+        language == .chinese ? "单趟最大落差" : "Max Descent (Single Run)"
+    }
+
+    var fastestRun: String {
+        language == .chinese ? "最快一趟" : "Fastest Run"
+    }
+
+    var avgSpeedDay: String {
+        language == .chinese ? "平均速度" : "Avg Speed"
+    }
+
+    var maxSpeedDay: String {
+        language == .chinese ? "最高速度" : "Max Speed"
+    }
+
+    var longestRun: String {
+        language == .chinese ? "最长一趟" : "Longest Run"
+    }
+
+    var avgRunDistance: String {
+        language == .chinese ? "平均每趟距离" : "Avg Distance/Run"
+    }
+
+    var runsCount: String {
+        language == .chinese ? "趟" : "runs"
+    }
 }
 
 // MARK: - Settings Manager

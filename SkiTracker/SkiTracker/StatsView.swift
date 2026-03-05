@@ -14,6 +14,9 @@ struct StatsView: View {
     let maxAltitude: Double
     let elevationDrop: Double
     let pointCount: Int
+    let showHeartRate: Bool
+    let maxHeartRateBPM: Double?
+    let avgHeartRateBPM: Double?
 
     var body: some View {
         let strings = settings.strings
@@ -68,12 +71,35 @@ struct StatsView: View {
                 )
             }
 
+            // Row 4: Heart Rate (optional, local-only)
+            if showHeartRate {
+                HStack(spacing: 16) {
+                    StatCard(
+                        icon: "heart.fill",
+                        title: strings.maxHeartRate,
+                        value: heartRateText(maxHeartRateBPM),
+                        unit: strings.heartRateUnit
+                    )
+                    StatCard(
+                        icon: "heart.text.square.fill",
+                        title: strings.avgHeartRate,
+                        value: heartRateText(avgHeartRateBPM),
+                        unit: strings.heartRateUnit
+                    )
+                }
+            }
+
             // Point count (subtle)
             Text("\(strings.trackPoints): \(pointCount)")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
         .padding(.horizontal)
+    }
+
+    private func heartRateText(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%.0f", value)
     }
 }
 
@@ -128,6 +154,9 @@ struct StatCard: View {
         avgSpeedKmh: 32.1,
         maxAltitude: 2450,
         elevationDrop: 680,
-        pointCount: 1234
+        pointCount: 1234,
+        showHeartRate: true,
+        maxHeartRateBPM: 172,
+        avgHeartRateBPM: 146
     )
 }

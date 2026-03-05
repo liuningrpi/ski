@@ -80,6 +80,21 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Start recording location updates
     func startTracking() {
         guard !isTracking else { return }
+        let strings = SettingsManager.shared.strings
+
+        guard CLLocationManager.locationServicesEnabled() else {
+            errorMessage = strings.locationServicesDisabled
+            return
+        }
+
+        guard canTrack else {
+            if authorizationStatus == .notDetermined {
+                requestPermission()
+            }
+            errorMessage = strings.locationPermissionNeeded
+            return
+        }
+
         locations.removeAll()
         segmenter.reset()
         trackingStartDate = Date()
@@ -165,6 +180,12 @@ extension LocationTracker: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations newLocations: [CLLocation]) {
         guard isTracking else { return }
 
+        if errorMessage != nil {
+            DispatchQueue.main.async {
+                self.errorMessage = nil
+            }
+        }
+
         for location in newLocations {
             // Filter: reject invalid accuracy
             guard location.horizontalAccuracy > 0,
@@ -188,8 +209,32 @@ extension LocationTracker: CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let strings = SettingsManager.shared.strings
+        let clError = error as? CLError
+        if clError?.code == .locationUnknown {
+            return
+        }
+
         DispatchQueue.main.async {
-            self.errorMessage = error.localizedDescription
+            guard let clError else {
+                self.errorMessage = error.localizedDescription
+                return
+            }
+
+            switch clError.code {
+            case .denied:
+                if self.isTracking {
+                    self.stopTracking()
+                }
+
+                if self.authorizationStatus == .authorizedWhenInUse {
+                    self.errorMessage = strings.locationBackgroundAccessRecommended
+                } else {
+                    self.errorMessage = strings.locationTrackingDenied
+                }
+            default:
+                self.errorMessage = clError.localizedDescription
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ struct ContentView: View {
 
     /// Trigger for stats refresh
     @State private var statsTick: Int = 0
+    @State private var liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
 
     var body: some View {
         let strings = settings.strings
@@ -90,6 +91,7 @@ struct ContentView: View {
             }
             .onDisappear {
                 statsTimer?.invalidate()
+                HeartRateService.shared.stopLiveUpdates()
             }
         }
     }
@@ -200,7 +202,10 @@ struct ContentView: View {
                 avgSpeedKmh: session.avgSpeedKmh,
                 maxAltitude: session.maxAltitude,
                 elevationDrop: session.elevationDrop,
-                pointCount: session.points.count
+                pointCount: session.points.count,
+                showHeartRate: true,
+                maxHeartRateBPM: liveHeartRateStats.maxBPM,
+                avgHeartRateBPM: liveHeartRateStats.avgBPM
             )
         }
     }
@@ -340,10 +345,16 @@ struct ContentView: View {
 
     private func startTracking() {
         tracker.startTracking()
+        liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+        statsTick = 0
+        statsTimer?.invalidate()
+
         // Start a timer to refresh stats every second
         statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             statsTick += 1
         }
+
+        startLiveHeartRateUpdates()
     }
 
     private func stopAndSave() {
@@ -363,6 +374,10 @@ struct ContentView: View {
             let latestSessions = [session] + sessionStore.sessions
             LeaderboardService.shared.useLocalOnly(user: nil, sessions: latestSessions)
         }
+
+        HeartRateService.shared.stopLiveUpdates()
+        liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+        statsTick = 0
     }
 
     private func buildLiveSession() -> TrackSession {
@@ -372,6 +387,19 @@ struct ContentView: View {
         )
         session.points = tracker.locations.map { TrackPoint(from: $0) }
         return session
+    }
+
+    private func startLiveHeartRateUpdates() {
+        guard tracker.isTracking, let start = tracker.trackingStartDate else {
+            liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+            return
+        }
+
+        HeartRateService.shared.startLiveUpdates(start: start) { stats in
+            if tracker.isTracking {
+                liveHeartRateStats = stats
+            }
+        }
     }
 }
 

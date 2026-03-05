@@ -81,6 +81,18 @@ struct LocalizedStrings {
         language == .chinese ? "前往设置开启定位" : "Go to Settings to Enable Location"
     }
 
+    var locationServicesDisabled: String {
+        language == .chinese ? "系统定位服务已关闭。请在系统设置中开启定位服务。" : "Location Services are turned off. Enable them in iPhone Settings."
+    }
+
+    var locationTrackingDenied: String {
+        language == .chinese ? "定位权限不可用，已停止记录。请前往系统设置开启定位权限。" : "Location access was denied and tracking has stopped. Enable location permission in Settings."
+    }
+
+    var locationBackgroundAccessRecommended: String {
+        language == .chinese ? "当前仅“使用期间”允许定位。若切到后台或锁屏可能停止记录，建议在设置中开启“始终允许”。" : "Location is set to While Using. Tracking may stop in background or when locked. Enable Always access in Settings."
+    }
+
     // Auth Status
     var authNotRequested: String {
         language == .chinese ? "未请求" : "Not Requested"
@@ -526,6 +538,19 @@ struct LocalizedStrings {
 
     var cameraPermissionRequired: String {
         language == .chinese ? "需要相机权限以扫描二维码。请在系统设置中开启。" : "Camera permission is required to scan QR codes. Enable it in Settings."
+    }
+
+    // Heart Rate (local only)
+    var maxHeartRate: String {
+        language == .chinese ? "最高心率" : "Max Heart Rate"
+    }
+
+    var avgHeartRate: String {
+        language == .chinese ? "平均心率" : "Avg Heart Rate"
+    }
+
+    var heartRateUnit: String {
+        "bpm"
     }
 }
 

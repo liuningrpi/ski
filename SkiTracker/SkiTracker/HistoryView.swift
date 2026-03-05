@@ -578,6 +578,7 @@ struct SessionDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var showDeleteSessionConfirm = false
     @State private var selectedRun: RunSegment?
+    @State private var sessionHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
 
     var body: some View {
         let strings = settings.strings
@@ -612,7 +613,10 @@ struct SessionDetailView: View {
                         avgSpeedKmh: session.avgSpeedKmh,
                         maxAltitude: session.maxAltitude,
                         elevationDrop: session.elevationDrop,
-                        pointCount: session.points.count
+                        pointCount: session.points.count,
+                        showHeartRate: true,
+                        maxHeartRateBPM: sessionHeartRateStats.maxBPM,
+                        avgHeartRateBPM: sessionHeartRateStats.avgBPM
                     )
 
                     // Individual runs (if available)
@@ -671,6 +675,9 @@ struct SessionDetailView: View {
                     }
                 )
             }
+            .task(id: session.id) {
+                await loadSessionHeartRate()
+            }
         }
     }
 
@@ -682,6 +689,20 @@ struct SessionDetailView: View {
     private func deleteSession() {
         sessionStore.delete(session)
         dismiss()
+    }
+
+    private func loadSessionHeartRate() async {
+        guard let end = session.endedAt else {
+            await MainActor.run {
+                sessionHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+            }
+            return
+        }
+
+        let stats = await HeartRateService.shared.fetchStats(start: session.startedAt, end: end)
+        await MainActor.run {
+            sessionHeartRateStats = stats
+        }
     }
 
     // MARK: - Segment Summary
@@ -867,6 +888,7 @@ struct RunDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showDeleteConfirm = false
+    @State private var heartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
 
     var body: some View {
         let strings = settings.strings
@@ -996,6 +1018,24 @@ struct RunDetailView: View {
                             unit: strings.points,
                             color: .gray
                         )
+
+                        // Max Heart Rate (local only)
+                        RunStatCard(
+                            icon: "heart.fill",
+                            title: strings.maxHeartRate,
+                            value: heartRateValue(heartRateStats.maxBPM),
+                            unit: strings.heartRateUnit,
+                            color: .red
+                        )
+
+                        // Avg Heart Rate (local only)
+                        RunStatCard(
+                            icon: "heart.text.square.fill",
+                            title: strings.avgHeartRate,
+                            value: heartRateValue(heartRateStats.avgBPM),
+                            unit: strings.heartRateUnit,
+                            color: .pink
+                        )
                     }
                     .padding(.horizontal)
 
@@ -1045,6 +1085,28 @@ struct RunDetailView: View {
         } message: {
             Text(strings.deleteRunConfirmMessage)
         }
+        .task(id: run.id) {
+            await loadHeartRate()
+        }
+    }
+
+    private func loadHeartRate() async {
+        guard let end = run.endTime else {
+            await MainActor.run {
+                heartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+            }
+            return
+        }
+
+        let stats = await HeartRateService.shared.fetchStats(start: run.startTime, end: end)
+        await MainActor.run {
+            heartRateStats = stats
+        }
+    }
+
+    private func heartRateValue(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%.0f", value)
     }
 }
 

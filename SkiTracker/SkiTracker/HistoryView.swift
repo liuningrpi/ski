@@ -96,13 +96,7 @@ struct HistoryView: View {
         let strings = settings.strings
 
         NavigationStack {
-            Group {
-                if sessionStore.sessions.isEmpty {
-                    emptyState
-                } else {
-                    dayListView
-                }
-            }
+            dayListView
             .navigationTitle(strings.history)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -148,6 +142,12 @@ struct HistoryView: View {
         let units = settings.unitSystem
 
         List {
+            if dayGroups.isEmpty {
+                Section {
+                    emptyState
+                }
+            }
+
             ForEach(dayGroups) { dayGroup in
                 Section {
                     // Day summary button

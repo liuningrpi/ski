@@ -377,6 +377,79 @@ struct LocalizedStrings {
     var endAltitude: String {
         language == .chinese ? "结束海拔" : "End Altitude"
     }
+
+    // Leaderboard
+    var leaderboard: String {
+        language == .chinese ? "排行榜" : "Leaderboard"
+    }
+
+    var leaderboardCategoryMax: String {
+        language == .chinese ? "最高纪录" : "Max Records"
+    }
+
+    var leaderboardCategoryMost: String {
+        language == .chinese ? "最多纪录" : "Most Records"
+    }
+
+    var leaderboardOlympicBoard: String {
+        language == .chinese ? "奥运榜单" : "Olympic Board"
+    }
+
+    var leaderboardFullRank: String {
+        language == .chinese ? "完整排名" : "Full Ranking"
+    }
+
+    var rankBy: String {
+        language == .chinese ? "排名指标" : "Rank By"
+    }
+
+    var leaderboardNoData: String {
+        language == .chinese ? "暂无排行榜数据" : "No leaderboard data yet"
+    }
+
+    var leaderboardSingleUserHint: String {
+        language == .chinese ? "当前没有好友，排行榜仅显示你自己。" : "No friends yet, so the leaderboard currently shows only you."
+    }
+
+    var leaderboardFriendsOnlyHint: String {
+        language == .chinese ? "仅显示已互加好友的用户。" : "Only mutual friends are shown."
+    }
+
+    var leaderboardMetricTopSpeed: String {
+        language == .chinese ? "最高速度" : "Top Speed"
+    }
+
+    var leaderboardMetricTopRunDescent: String {
+        language == .chinese ? "单趟最大落差" : "Top Run Descent"
+    }
+
+    var leaderboardMetricMaxAltitude: String {
+        language == .chinese ? "最高海拔" : "Max Altitude"
+    }
+
+    var leaderboardMetricLongestRun: String {
+        language == .chinese ? "最长单趟距离" : "Longest Run"
+    }
+
+    var leaderboardMetricTotalDistance: String {
+        language == .chinese ? "总滑行距离" : "Total Distance"
+    }
+
+    var leaderboardMetricRunCount: String {
+        language == .chinese ? "总趟数" : "Run Count"
+    }
+
+    var leaderboardMetricTotalVerticalDrop: String {
+        language == .chinese ? "总下降" : "Total Vertical Drop"
+    }
+
+    var leaderboardMetricTotalDuration: String {
+        language == .chinese ? "总时长" : "Total Duration"
+    }
+
+    var youLabel: String {
+        language == .chinese ? "我" : "You"
+    }
 }
 
 // MARK: - Settings Manager

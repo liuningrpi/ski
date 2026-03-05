@@ -12,6 +12,7 @@ struct ContentView: View {
     @ObservedObject var settings = SettingsManager.shared
 
     @State private var showHistory = false
+    @State private var showLeaderboard = false
     @State private var showSettings = false
     @State private var showStopConfirm = false
     @State private var liveSession: TrackSession?
@@ -55,15 +56,26 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showHistory = true
-                    } label: {
-                        Image(systemName: "clock.arrow.circlepath")
+                    HStack(spacing: 12) {
+                        Button {
+                            showLeaderboard = true
+                        } label: {
+                            Image(systemName: "trophy.fill")
+                        }
+                        Button {
+                            showHistory = true
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                        }
                     }
                 }
             }
             .sheet(isPresented: $showHistory) {
                 HistoryView()
+            }
+            .sheet(isPresented: $showLeaderboard) {
+                LeaderboardView()
+                    .environmentObject(sessionStore)
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
@@ -341,6 +353,16 @@ struct ContentView: View {
 
         let session = tracker.buildSession()
         sessionStore.save(session)
+
+        if let user = AuthService.shared.currentUser {
+            let latestSessions = [session] + sessionStore.sessions
+            Task {
+                await LeaderboardService.shared.refreshLeaderboard(for: user, localSessions: latestSessions)
+            }
+        } else {
+            let latestSessions = [session] + sessionStore.sessions
+            LeaderboardService.shared.useLocalOnly(user: nil, sessions: latestSessions)
+        }
     }
 
     private func buildLiveSession() -> TrackSession {

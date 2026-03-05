@@ -653,11 +653,11 @@ struct SessionDetailView: View {
             } message: {
                 Text(strings.deleteRunConfirmMessage)
             }
-            .alert(strings.deleteConfirmTitle, isPresented: $showDeleteSessionConfirm) {
-                Button(strings.cancel, role: .cancel) { }
+            .confirmationDialog(strings.deleteConfirmTitle, isPresented: $showDeleteSessionConfirm, titleVisibility: .visible) {
                 Button(strings.delete, role: .destructive) {
                     deleteSession()
                 }
+                Button(strings.cancel, role: .cancel) { }
             } message: {
                 Text(strings.deleteConfirmMessage)
             }

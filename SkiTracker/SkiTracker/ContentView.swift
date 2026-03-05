@@ -47,22 +47,19 @@ struct ContentView: View {
             .navigationTitle(strings.appTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                        }
-                        Button {
-                            showHistory = true
-                        } label: {
-                            Image(systemName: "clock.arrow.circlepath")
-                        }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
                     }
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    authStatusBadge
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showHistory = true
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
                 }
             }
             .sheet(isPresented: $showHistory) {
@@ -324,32 +321,6 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
             }
-        }
-    }
-
-    // MARK: - Auth Status Badge
-
-    @ViewBuilder
-    private var authStatusBadge: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(tracker.canTrack ? Color.green : Color.orange)
-                .frame(width: 8, height: 8)
-            Text(authStatusText)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    private var authStatusText: String {
-        let strings = settings.strings
-        switch tracker.authorizationStatus {
-        case .notDetermined: return strings.authNotRequested
-        case .restricted: return strings.authRestricted
-        case .denied: return strings.authDenied
-        case .authorizedWhenInUse: return strings.authWhenInUse
-        case .authorizedAlways: return strings.authAlways
-        @unknown default: return strings.authUnknown
         }
     }
 

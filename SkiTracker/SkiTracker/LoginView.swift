@@ -109,6 +109,7 @@ struct LoginView: View {
                     if let user = authService.currentUser {
                         Task {
                             await FirestoreService.shared.saveUserProfile(user)
+                            await FriendService.shared.processPendingInviteIfNeeded(currentUser: user)
                         }
                     }
                     dismiss()
@@ -180,6 +181,16 @@ struct AccountView: View {
                             .foregroundColor(.secondary)
                     }
                     .font(.caption)
+                }
+
+                // Friends
+                NavigationLink {
+                    FriendsView()
+                } label: {
+                    HStack {
+                        Image(systemName: "person.2.fill")
+                        Text(strings.friends)
+                    }
                 }
 
                 // Sign out

@@ -14,7 +14,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ app: UIApplication,
                      open url: URL,
                      options: [UIApplication.OpenURLOptionsKey: Any]) -> Bool {
-        return GIDSignIn.sharedInstance.handle(url)
+        if GIDSignIn.sharedInstance.handle(url) {
+            return true
+        }
+        return FriendService.shared.handleIncomingURL(url)
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

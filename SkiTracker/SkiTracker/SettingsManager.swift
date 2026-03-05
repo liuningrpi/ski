@@ -415,6 +415,10 @@ struct LocalizedStrings {
         language == .chinese ? "仅显示已互加好友的用户。" : "Only mutual friends are shown."
     }
 
+    var leaderboardSyncTimeout: String {
+        language == .chinese ? "排行榜同步超时，已显示本地数据。" : "Leaderboard sync timed out. Showing local data."
+    }
+
     var leaderboardMetricTopSpeed: String {
         language == .chinese ? "最高速度" : "Top Speed"
     }
@@ -449,6 +453,79 @@ struct LocalizedStrings {
 
     var youLabel: String {
         language == .chinese ? "我" : "You"
+    }
+
+    // Friends
+    var friends: String {
+        language == .chinese ? "好友" : "Friends"
+    }
+
+    var myFriendQR: String {
+        language == .chinese ? "我的好友二维码" : "My Friend QR Code"
+    }
+
+    var addFriend: String {
+        language == .chinese ? "添加好友" : "Add Friend"
+    }
+
+    var enterFriendCodeOrLink: String {
+        language == .chinese ? "输入好友邀请码或链接" : "Enter friend code or invite link"
+    }
+
+    var addByCodeOrLink: String {
+        language == .chinese ? "通过邀请码/链接添加" : "Add by Code/Link"
+    }
+
+    var scanFriendQRCode: String {
+        language == .chinese ? "扫描好友二维码" : "Scan Friend QR"
+    }
+
+    var shareInviteLink: String {
+        language == .chinese ? "分享邀请链接" : "Share Invite Link"
+    }
+
+    var copyInviteLink: String {
+        language == .chinese ? "复制邀请链接" : "Copy Invite Link"
+    }
+
+    var inviteLinkCopied: String {
+        language == .chinese ? "邀请链接已复制" : "Invite link copied"
+    }
+
+    var loadingFriends: String {
+        language == .chinese ? "加载好友中..." : "Loading friends..."
+    }
+
+    var noFriendsYet: String {
+        language == .chinese ? "还没有好友，先分享你的二维码吧。" : "No friends yet. Share your QR to add friends."
+    }
+
+    var signInToManageFriends: String {
+        language == .chinese ? "请先登录后管理好友。" : "Please sign in to manage friends."
+    }
+
+    var friendInviteSavedSignInNeeded: String {
+        language == .chinese ? "已收到好友邀请，登录后会自动添加。" : "Friend invite received. Sign in to add automatically."
+    }
+
+    var friendInvalidInvite: String {
+        language == .chinese ? "无效的好友邀请码或链接" : "Invalid friend invite code or link"
+    }
+
+    var friendCannotAddSelf: String {
+        language == .chinese ? "不能添加自己为好友" : "You cannot add yourself as a friend"
+    }
+
+    var friendAccountNotFound: String {
+        language == .chinese ? "未找到该账号" : "That account was not found"
+    }
+
+    var friendAdded: String {
+        language == .chinese ? "已添加好友" : "Friend added"
+    }
+
+    var cameraPermissionRequired: String {
+        language == .chinese ? "需要相机权限以扫描二维码。请在系统设置中开启。" : "Camera permission is required to scan QR codes. Enable it in Settings."
     }
 }
 

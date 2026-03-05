@@ -28,6 +28,21 @@ struct TrackPoint: Codable, Identifiable {
         self.timestamp = location.timestamp
     }
 
+    /// Manual initializer for Firestore deserialization
+    init(latitude: Double, longitude: Double, altitude: Double,
+         horizontalAccuracy: Double, verticalAccuracy: Double,
+         speed: Double, course: Double, timestamp: Date) {
+        self.id = UUID()
+        self.latitude = latitude
+        self.longitude = longitude
+        self.altitude = altitude
+        self.horizontalAccuracy = horizontalAccuracy
+        self.verticalAccuracy = verticalAccuracy
+        self.speed = speed
+        self.course = course
+        self.timestamp = timestamp
+    }
+
     /// Convenience: convert back to CLLocationCoordinate2D
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -46,6 +61,15 @@ struct TrackSession: Codable, Identifiable {
 
     init(startedAt: Date, deviceInfo: String? = nil) {
         self.id = UUID()
+        self.startedAt = startedAt
+        self.endedAt = nil
+        self.points = []
+        self.deviceInfo = deviceInfo
+    }
+
+    /// Manual initializer for Firestore deserialization
+    init(id: UUID, startedAt: Date, deviceInfo: String?) {
+        self.id = id
         self.startedAt = startedAt
         self.endedAt = nil
         self.points = []

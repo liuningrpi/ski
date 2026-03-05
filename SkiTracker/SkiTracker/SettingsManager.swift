@@ -267,6 +267,59 @@ struct LocalizedStrings {
     var runsCount: String {
         language == .chinese ? "趟" : "runs"
     }
+
+    // Authentication
+    var signIn: String {
+        language == .chinese ? "登录" : "Sign In"
+    }
+
+    var signOut: String {
+        language == .chinese ? "退出登录" : "Sign Out"
+    }
+
+    var signInWithApple: String {
+        language == .chinese ? "使用 Apple 登录" : "Sign in with Apple"
+    }
+
+    var signInWithGoogle: String {
+        language == .chinese ? "使用 Google 登录" : "Sign in with Google"
+    }
+
+    var welcomeMessage: String {
+        language == .chinese ? "登录以同步您的滑雪数据" : "Sign in to sync your ski data"
+    }
+
+    var syncData: String {
+        language == .chinese ? "同步数据" : "Sync Data"
+    }
+
+    var syncing: String {
+        language == .chinese ? "同步中..." : "Syncing..."
+    }
+
+    var lastSynced: String {
+        language == .chinese ? "上次同步" : "Last synced"
+    }
+
+    var account: String {
+        language == .chinese ? "账户" : "Account"
+    }
+
+    var signedInAs: String {
+        language == .chinese ? "已登录为" : "Signed in as"
+    }
+
+    var continueAsGuest: String {
+        language == .chinese ? "暂不登录" : "Continue as Guest"
+    }
+
+    var dataStoredLocally: String {
+        language == .chinese ? "数据仅保存在本地" : "Data stored locally only"
+    }
+
+    var signInToSync: String {
+        language == .chinese ? "登录以同步到云端" : "Sign in to sync to cloud"
+    }
 }
 
 // MARK: - Settings Manager

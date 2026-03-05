@@ -2,17 +2,40 @@ import SwiftUI
 
 // MARK: - SettingsView
 
-/// Settings screen for language and unit preferences.
+/// Settings screen for language, unit preferences, and account.
 struct SettingsView: View {
 
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject var authService = AuthService.shared
+    @EnvironmentObject var sessionStore: SessionStore
     @Environment(\.dismiss) private var dismiss
+
+    @State private var showLogin = false
 
     var body: some View {
         let strings = settings.strings
 
         NavigationStack {
             List {
+                // Account Section
+                AccountView()
+
+                // Sign In button (if not logged in)
+                if !authService.isLoggedIn {
+                    Section {
+                        Button {
+                            showLogin = true
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text(strings.signIn)
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+
                 // Language Section
                 Section {
                     ForEach(AppLanguage.allCases, id: \.self) { lang in
@@ -70,6 +93,9 @@ struct SettingsView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showLogin) {
+                LoginView()
+            }
         }
     }
 
@@ -96,4 +122,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
+        .environmentObject(SessionStore())
 }

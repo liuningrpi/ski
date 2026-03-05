@@ -26,6 +26,9 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Error message for UI display
     @Published var errorMessage: String?
 
+    /// Run segmenter for automatic run detection
+    @Published var segmenter = RunSegmenter()
+
     // MARK: - Private
 
     private let locationManager = CLLocationManager()
@@ -78,6 +81,7 @@ final class LocationTracker: NSObject, ObservableObject {
     func startTracking() {
         guard !isTracking else { return }
         locations.removeAll()
+        segmenter.reset()
         trackingStartDate = Date()
         isTracking = true
         errorMessage = nil
@@ -88,6 +92,7 @@ final class LocationTracker: NSObject, ObservableObject {
     func stopTracking() {
         guard isTracking else { return }
         locationManager.stopUpdatingLocation()
+        segmenter.finalizeCurrentSegment()
         isTracking = false
     }
 
@@ -99,6 +104,7 @@ final class LocationTracker: NSObject, ObservableObject {
         )
         session.endedAt = Date()
         session.points = locations.map { TrackPoint(from: $0) }
+        session.segments = segmenter.segments
         return session
     }
 
@@ -161,6 +167,9 @@ extension LocationTracker: CLLocationManagerDelegate {
             if location.speed >= 0 {
                 adjustDistanceFilter(for: location.speed)
             }
+
+            // Feed to segmenter for automatic run detection
+            segmenter.processLocation(location)
 
             DispatchQueue.main.async {
                 self.locations.append(location)

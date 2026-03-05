@@ -58,6 +58,7 @@ struct TrackSession: Codable, Identifiable {
     var endedAt: Date?
     var points: [TrackPoint]
     let deviceInfo: String?
+    var segments: [RunSegment]
 
     init(startedAt: Date, deviceInfo: String? = nil) {
         self.id = UUID()
@@ -65,6 +66,7 @@ struct TrackSession: Codable, Identifiable {
         self.endedAt = nil
         self.points = []
         self.deviceInfo = deviceInfo
+        self.segments = []
     }
 
     /// Manual initializer for Firestore deserialization
@@ -74,6 +76,34 @@ struct TrackSession: Codable, Identifiable {
         self.endedAt = nil
         self.points = []
         self.deviceInfo = deviceInfo
+        self.segments = []
+    }
+
+    // MARK: - Segment Statistics
+
+    /// Number of skiing runs
+    var runCount: Int {
+        segments.filter { $0.type == .skiing }.count
+    }
+
+    /// Number of lift rides
+    var liftCount: Int {
+        segments.filter { $0.type == .lift }.count
+    }
+
+    /// Total vertical drop from skiing segments only
+    var totalVerticalDrop: Double {
+        segments.filter { $0.type == .skiing }.reduce(0) { $0 + max(0, -$1.verticalChange) }
+    }
+
+    /// Skiing runs only
+    var skiingRuns: [RunSegment] {
+        segments.filter { $0.type == .skiing }
+    }
+
+    /// Lift rides only
+    var liftRides: [RunSegment] {
+        segments.filter { $0.type == .lift }
     }
 
     // MARK: - Computed Statistics

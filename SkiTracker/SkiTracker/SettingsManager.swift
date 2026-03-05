@@ -320,6 +320,47 @@ struct LocalizedStrings {
     var signInToSync: String {
         language == .chinese ? "登录以同步到云端" : "Sign in to sync to cloud"
     }
+
+    // Run Segmentation
+    var currentState: String {
+        language == .chinese ? "当前状态" : "Current State"
+    }
+
+    var stateIdle: String {
+        language == .chinese ? "空闲" : "Idle"
+    }
+
+    var stateSkiing: String {
+        language == .chinese ? "滑行中" : "Skiing"
+    }
+
+    var stateLift: String {
+        language == .chinese ? "缆车上行" : "On Lift"
+    }
+
+    var stateStopped: String {
+        language == .chinese ? "停止" : "Stopped"
+    }
+
+    var runsCompleted: String {
+        language == .chinese ? "已完成趟数" : "Runs Completed"
+    }
+
+    var liftsCompleted: String {
+        language == .chinese ? "缆车次数" : "Lifts Taken"
+    }
+
+    var verticalDrop: String {
+        language == .chinese ? "累计下降" : "Vertical Drop"
+    }
+
+    var runDetails: String {
+        language == .chinese ? "单趟详情" : "Run Details"
+    }
+
+    var segmentType: String {
+        language == .chinese ? "类型" : "Type"
+    }
 }
 
 // MARK: - Settings Manager

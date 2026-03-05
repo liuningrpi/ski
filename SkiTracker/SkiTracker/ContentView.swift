@@ -111,12 +111,15 @@ struct ContentView: View {
     @ViewBuilder
     private var liveStatsPanel: some View {
         let strings = settings.strings
+        let units = settings.unitSystem
         let _ = statsTick // force refresh
         let session = buildLiveSession()
+        let segmenter = tracker.segmenter
 
         VStack(spacing: 8) {
-            // Compact live indicator
+            // Status bar with state indicator
             HStack {
+                // Recording indicator
                 Circle()
                     .fill(Color.red)
                     .frame(width: 8, height: 8)
@@ -124,13 +127,62 @@ struct ContentView: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(.red)
+
                 Spacer()
-                Text("\(tracker.locations.count) \(strings.points)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+
+                // Current skiing state
+                HStack(spacing: 4) {
+                    Image(systemName: stateIcon(segmenter.currentState))
+                        .foregroundColor(stateColor(segmenter.currentState))
+                    Text(stateName(segmenter.currentState))
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(stateColor(segmenter.currentState))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(stateColor(segmenter.currentState).opacity(0.15))
+                .cornerRadius(8)
             }
             .padding(.horizontal)
             .padding(.top, 12)
+
+            // Run counter
+            HStack(spacing: 16) {
+                // Runs completed
+                HStack(spacing: 4) {
+                    Image(systemName: "figure.skiing.downhill")
+                        .foregroundColor(.blue)
+                    Text("\(segmenter.skiingRunCount)")
+                        .fontWeight(.bold)
+                    Text(strings.runsCount)
+                        .foregroundColor(.secondary)
+                }
+                .font(.caption)
+
+                // Lifts taken
+                HStack(spacing: 4) {
+                    Image(systemName: "cablecar")
+                        .foregroundColor(.orange)
+                    Text("\(segmenter.liftCount)")
+                        .fontWeight(.bold)
+                }
+                .font(.caption)
+
+                // Vertical drop
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down")
+                        .foregroundColor(.green)
+                    Text("\(settings.formatAltitude(segmenter.totalVerticalDrop))")
+                        .fontWeight(.bold)
+                    Text(units.altitudeUnit)
+                        .foregroundColor(.secondary)
+                }
+                .font(.caption)
+
+                Spacer()
+            }
+            .padding(.horizontal)
 
             StatsView(
                 durationFormatted: session.durationFormatted,
@@ -141,6 +193,36 @@ struct ContentView: View {
                 elevationDrop: session.elevationDrop,
                 pointCount: session.points.count
             )
+        }
+    }
+
+    // MARK: - State Helpers
+
+    private func stateIcon(_ state: SkiingState) -> String {
+        switch state {
+        case .idle: return "pause.circle"
+        case .skiing: return "figure.skiing.downhill"
+        case .lift: return "cablecar"
+        case .stopped: return "stop.circle"
+        }
+    }
+
+    private func stateColor(_ state: SkiingState) -> Color {
+        switch state {
+        case .idle: return .gray
+        case .skiing: return .blue
+        case .lift: return .orange
+        case .stopped: return .yellow
+        }
+    }
+
+    private func stateName(_ state: SkiingState) -> String {
+        let strings = settings.strings
+        switch state {
+        case .idle: return strings.stateIdle
+        case .skiing: return strings.stateSkiing
+        case .lift: return strings.stateLift
+        case .stopped: return strings.stateStopped
         }
     }
 

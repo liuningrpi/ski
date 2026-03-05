@@ -437,12 +437,18 @@ struct SessionDetailView: View {
 
     var body: some View {
         let strings = settings.strings
+        let units = settings.unitSystem
 
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     // Session info header
                     sessionHeader
+
+                    // Segment summary (if available)
+                    if !session.segments.isEmpty {
+                        segmentSummary
+                    }
 
                     // Map with track polyline
                     let coords = session.points.map { $0.coordinate }
@@ -465,7 +471,14 @@ struct SessionDetailView: View {
                         elevationDrop: session.elevationDrop,
                         pointCount: session.points.count
                     )
-                    .padding(.bottom, 20)
+
+                    // Individual runs (if available)
+                    if !session.skiingRuns.isEmpty {
+                        runsSection
+                    }
+
+                    Spacer()
+                        .frame(height: 20)
                 }
             }
             .navigationTitle(strings.history)
@@ -476,6 +489,138 @@ struct SessionDetailView: View {
                         dismiss()
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: - Segment Summary
+
+    @ViewBuilder
+    private var segmentSummary: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        HStack(spacing: 20) {
+            // Runs
+            VStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "figure.skiing.downhill")
+                        .foregroundColor(.blue)
+                    Text("\(session.runCount)")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                }
+                Text(strings.runsCount)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+                .frame(height: 40)
+
+            // Lifts
+            VStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "cablecar")
+                        .foregroundColor(.orange)
+                    Text("\(session.liftCount)")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                }
+                Text(strings.liftsCompleted)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+                .frame(height: 40)
+
+            // Vertical Drop
+            VStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down")
+                        .foregroundColor(.green)
+                    Text(settings.formatAltitude(session.totalVerticalDrop))
+                        .font(.title2)
+                        .fontWeight(.bold)
+                }
+                Text(units.altitudeUnit)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+
+    // MARK: - Runs Section
+
+    @ViewBuilder
+    private var runsSection: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        VStack(alignment: .leading, spacing: 12) {
+            Text(strings.runDetails)
+                .font(.headline)
+                .padding(.horizontal)
+
+            ForEach(Array(session.skiingRuns.enumerated()), id: \.element.id) { index, run in
+                HStack {
+                    // Run number
+                    Text("#\(index + 1)")
+                        .font(.headline)
+                        .foregroundColor(.blue)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Time
+                        HStack {
+                            Text(run.startTime, style: .time)
+                            if let end = run.endTime {
+                                Text("-")
+                                Text(end, style: .time)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                        // Duration
+                        Text(run.durationFormatted)
+                            .font(.subheadline)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        // Distance
+                        Text("\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        // Max Speed
+                        Text("\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    // Vertical drop
+                    VStack(alignment: .trailing) {
+                        Text("\(settings.formatAltitude(run.elevationDrop))")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Text(units.altitudeUnit)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(width: 50)
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+                .padding(.horizontal)
             }
         }
     }

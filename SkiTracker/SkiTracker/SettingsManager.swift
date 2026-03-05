@@ -361,6 +361,22 @@ struct LocalizedStrings {
     var segmentType: String {
         language == .chinese ? "类型" : "Type"
     }
+
+    var deleteRunConfirmTitle: String {
+        language == .chinese ? "删除此趟？" : "Delete this run?"
+    }
+
+    var deleteRunConfirmMessage: String {
+        language == .chinese ? "此数据将被永久删除" : "This data will be permanently deleted"
+    }
+
+    var startAltitude: String {
+        language == .chinese ? "起始海拔" : "Start Altitude"
+    }
+
+    var endAltitude: String {
+        language == .chinese ? "结束海拔" : "End Altitude"
+    }
 }
 
 // MARK: - Settings Manager

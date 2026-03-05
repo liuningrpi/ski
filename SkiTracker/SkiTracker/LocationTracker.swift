@@ -86,6 +86,8 @@ final class LocationTracker: NSObject, ObservableObject {
         isTracking = true
         errorMessage = nil
         locationManager.startUpdatingLocation()
+
+        LoggingService.shared.logSessionStart()
     }
 
     /// Stop recording location updates
@@ -94,6 +96,13 @@ final class LocationTracker: NSObject, ObservableObject {
         locationManager.stopUpdatingLocation()
         segmenter.finalizeCurrentSegment()
         isTracking = false
+
+        LoggingService.shared.logSessionEnd(
+            runCount: segmenter.skiingRunCount,
+            liftCount: segmenter.liftCount,
+            totalDistance: segmenter.totalSkiingDistance,
+            totalVertical: segmenter.totalVerticalDrop
+        )
     }
 
     /// Build a TrackSession from the current recorded data

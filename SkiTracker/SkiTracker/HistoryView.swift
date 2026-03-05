@@ -131,9 +131,11 @@ struct HistoryView: View {
             }
             .sheet(item: $selectedSession) { session in
                 SessionDetailView(session: session)
+                    .environmentObject(sessionStore)
             }
             .sheet(item: $selectedDayGroup) { dayGroup in
                 DaySummaryView(dayGroup: dayGroup)
+                    .environmentObject(sessionStore)
             }
         }
     }
@@ -250,14 +252,44 @@ struct HistoryView: View {
     }
 }
 
+// MARK: - Run with Session Reference (for Day Summary)
+
+struct RunWithSession: Identifiable {
+    let id: UUID
+    let run: RunSegment
+    let session: TrackSession
+    let runIndex: Int  // 1-based index within the day
+}
+
 // MARK: - Day Summary View
 
 struct DaySummaryView: View {
 
     let dayGroup: DayGroup
 
+    @EnvironmentObject var sessionStore: SessionStore
     @ObservedObject var settings = SettingsManager.shared
     @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedRunWithSession: RunWithSession?
+
+    // Extract all skiing runs from all sessions in this day
+    private var allRuns: [RunWithSession] {
+        var runs: [RunWithSession] = []
+        var index = 1
+        for session in dayGroup.sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
+            for run in session.skiingRuns {
+                runs.append(RunWithSession(
+                    id: run.id,
+                    run: run,
+                    session: session,
+                    runIndex: index
+                ))
+                index += 1
+            }
+        }
+        return runs
+    }
 
     var body: some View {
         let strings = settings.strings
@@ -271,7 +303,7 @@ struct DaySummaryView: View {
                         Text(dayGroup.date, style: .date)
                             .font(.title2)
                             .fontWeight(.bold)
-                        Text("\(dayGroup.sessions.count) \(strings.runsCount)")
+                        Text("\(allRuns.count) \(strings.runsCount)")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -371,7 +403,13 @@ struct DaySummaryView: View {
                     .cornerRadius(12)
                     .padding(.horizontal)
 
+                    // Individual Runs List
+                    if !allRuns.isEmpty {
+                        runsListSection
+                    }
+
                     Spacer()
+                        .frame(height: 20)
                 }
             }
             .navigationTitle(strings.daySummary)
@@ -383,7 +421,107 @@ struct DaySummaryView: View {
                     }
                 }
             }
+            .sheet(item: $selectedRunWithSession) { runWithSession in
+                RunDetailView(
+                    run: runWithSession.run,
+                    runIndex: runWithSession.runIndex,
+                    onDelete: {
+                        selectedRunWithSession = nil
+                        deleteRun(runWithSession)
+                    }
+                )
+            }
         }
+    }
+
+    // MARK: - Runs List Section
+
+    @ViewBuilder
+    private var runsListSection: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        VStack(alignment: .leading, spacing: 12) {
+            Text(strings.runDetails)
+                .font(.headline)
+                .padding(.horizontal)
+
+            ForEach(allRuns) { runWithSession in
+                let run = runWithSession.run
+
+                Button {
+                    selectedRunWithSession = runWithSession
+                } label: {
+                    HStack {
+                        // Run number
+                        Text("#\(runWithSession.runIndex)")
+                            .font(.headline)
+                            .foregroundColor(.blue)
+                            .frame(width: 40)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            // Time
+                            HStack {
+                                Text(run.startTime, style: .time)
+                                if let end = run.endTime {
+                                    Text("-")
+                                    Text(end, style: .time)
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                            // Duration
+                            Text(run.durationFormatted)
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            // Distance
+                            Text("\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
+
+                            // Max Speed
+                            Text("\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        // Vertical drop
+                        VStack(alignment: .trailing) {
+                            Text("\(settings.formatAltitude(run.elevationDrop))")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
+                            Text(units.altitudeUnit)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(width: 50)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    private func deleteRun(_ runWithSession: RunWithSession) {
+        var session = runWithSession.session
+        session.deleteRun(id: runWithSession.run.id)
+        sessionStore.update(session)
     }
 }
 
@@ -430,14 +568,19 @@ struct SummaryCard: View {
 
 struct SessionDetailView: View {
 
-    let session: TrackSession
+    @State var session: TrackSession
+    @EnvironmentObject var sessionStore: SessionStore
 
     @ObservedObject var settings = SettingsManager.shared
     @Environment(\.dismiss) private var dismiss
 
+    @State private var runToDelete: RunSegment?
+    @State private var showDeleteConfirm = false
+    @State private var showDeleteSessionConfirm = false
+    @State private var selectedRun: RunSegment?
+
     var body: some View {
         let strings = settings.strings
-        let units = settings.unitSystem
 
         NavigationStack {
             ScrollView {
@@ -489,8 +632,56 @@ struct SessionDetailView: View {
                         dismiss()
                     }
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(role: .destructive) {
+                        showDeleteSessionConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                }
+            }
+            .alert(strings.deleteRunConfirmTitle, isPresented: $showDeleteConfirm) {
+                Button(strings.cancel, role: .cancel) {
+                    runToDelete = nil
+                }
+                Button(strings.delete, role: .destructive) {
+                    if let run = runToDelete {
+                        deleteRun(run)
+                    }
+                    runToDelete = nil
+                }
+            } message: {
+                Text(strings.deleteRunConfirmMessage)
+            }
+            .alert(strings.deleteConfirmTitle, isPresented: $showDeleteSessionConfirm) {
+                Button(strings.cancel, role: .cancel) { }
+                Button(strings.delete, role: .destructive) {
+                    deleteSession()
+                }
+            } message: {
+                Text(strings.deleteConfirmMessage)
+            }
+            .sheet(item: $selectedRun) { run in
+                RunDetailView(
+                    run: run,
+                    runIndex: session.skiingRuns.firstIndex(where: { $0.id == run.id }).map { $0 + 1 } ?? 0,
+                    onDelete: {
+                        selectedRun = nil
+                        deleteRun(run)
+                    }
+                )
             }
         }
+    }
+
+    private func deleteRun(_ run: RunSegment) {
+        session.deleteRun(id: run.id)
+        sessionStore.update(session)
+    }
+
+    private func deleteSession() {
+        sessionStore.delete(session)
+        dismiss()
     }
 
     // MARK: - Segment Summary
@@ -568,58 +759,70 @@ struct SessionDetailView: View {
                 .padding(.horizontal)
 
             ForEach(Array(session.skiingRuns.enumerated()), id: \.element.id) { index, run in
-                HStack {
-                    // Run number
-                    Text("#\(index + 1)")
-                        .font(.headline)
-                        .foregroundColor(.blue)
-                        .frame(width: 40)
+                Button {
+                    selectedRun = run
+                } label: {
+                    HStack {
+                        // Run number
+                        Text("#\(index + 1)")
+                            .font(.headline)
+                            .foregroundColor(.blue)
+                            .frame(width: 40)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        // Time
-                        HStack {
-                            Text(run.startTime, style: .time)
-                            if let end = run.endTime {
-                                Text("-")
-                                Text(end, style: .time)
+                        VStack(alignment: .leading, spacing: 2) {
+                            // Time
+                            HStack {
+                                Text(run.startTime, style: .time)
+                                if let end = run.endTime {
+                                    Text("-")
+                                    Text(end, style: .time)
+                                }
                             }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                            // Duration
+                            Text(run.durationFormatted)
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
                         }
-                        .font(.caption)
-                        .foregroundColor(.secondary)
 
-                        // Duration
-                        Text(run.durationFormatted)
-                            .font(.subheadline)
-                    }
+                        Spacer()
 
-                    Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            // Distance
+                            Text("\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
 
-                    VStack(alignment: .trailing, spacing: 2) {
-                        // Distance
-                        Text("\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+                            // Max Speed
+                            Text("\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
 
-                        // Max Speed
-                        Text("\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)")
+                        // Vertical drop
+                        VStack(alignment: .trailing) {
+                            Text("\(settings.formatAltitude(run.elevationDrop))")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
+                            Text(units.altitudeUnit)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(width: 50)
+
+                        Image(systemName: "chevron.right")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-
-                    // Vertical drop
-                    VStack(alignment: .trailing) {
-                        Text("\(settings.formatAltitude(run.elevationDrop))")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                        Text(units.altitudeUnit)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(width: 50)
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
+                .buttonStyle(.plain)
                 .padding(.horizontal)
             }
         }
@@ -649,6 +852,238 @@ struct SessionDetailView: View {
             }
         }
         .padding(.top, 8)
+    }
+}
+
+// MARK: - Run Detail View
+
+struct RunDetailView: View {
+
+    let run: RunSegment
+    let runIndex: Int
+    let onDelete: () -> Void
+
+    @ObservedObject var settings = SettingsManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var showDeleteConfirm = false
+
+    var body: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        VStack(spacing: 0) {
+            // Custom header with Close and Delete buttons
+            HStack {
+                Button(strings.close) {
+                    dismiss()
+                }
+                .foregroundColor(.blue)
+
+                Spacer()
+
+                Text(strings.runDetails)
+                    .font(.headline)
+
+                Spacer()
+
+                Button {
+                    showDeleteConfirm = true
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                }
+            }
+            .padding()
+            .background(Color(.systemBackground))
+
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Run header
+                    VStack(spacing: 8) {
+                        HStack {
+                            Image(systemName: "figure.skiing.downhill")
+                                .font(.system(size: 40))
+                                .foregroundColor(.blue)
+                        }
+
+                        Text("Run #\(runIndex)")
+                            .font(.title)
+                            .fontWeight(.bold)
+
+                        HStack {
+                            Text(run.startTime, style: .time)
+                            if let end = run.endTime {
+                                Text("-")
+                                Text(end, style: .time)
+                            }
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    }
+                    .padding(.top)
+
+                    // Map with track
+                    if !run.points.isEmpty {
+                        let coords = run.points.map { $0.coordinate }
+                        TrackMapView(
+                            coordinates: coords,
+                            followUser: false,
+                            showEndMarker: true
+                        )
+                        .frame(height: 250)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+
+                    // Stats grid
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible())
+                    ], spacing: 12) {
+                        // Duration
+                        RunStatCard(
+                            icon: "timer",
+                            title: strings.duration,
+                            value: run.durationFormatted,
+                            unit: "",
+                            color: .green
+                        )
+
+                        // Distance
+                        RunStatCard(
+                            icon: "point.topleft.down.to.point.bottomright.curvepath",
+                            title: strings.distance,
+                            value: settings.formatDistance(run.totalDistanceKm),
+                            unit: units.distanceUnit,
+                            color: .blue
+                        )
+
+                        // Max Speed
+                        RunStatCard(
+                            icon: "gauge.with.needle.fill",
+                            title: strings.maxSpeed,
+                            value: settings.formatSpeed(run.maxSpeedKmh),
+                            unit: units.speedUnit,
+                            color: .red
+                        )
+
+                        // Avg Speed
+                        RunStatCard(
+                            icon: "speedometer",
+                            title: strings.avgSpeed,
+                            value: settings.formatSpeed(run.avgSpeedKmh),
+                            unit: units.speedUnit,
+                            color: .purple
+                        )
+
+                        // Elevation Drop
+                        RunStatCard(
+                            icon: "arrow.down.right",
+                            title: strings.elevationDrop,
+                            value: settings.formatAltitude(run.elevationDrop),
+                            unit: units.altitudeUnit,
+                            color: .orange
+                        )
+
+                        // Track Points
+                        RunStatCard(
+                            icon: "location.fill",
+                            title: strings.trackPoints,
+                            value: "\(run.points.count)",
+                            unit: strings.points,
+                            color: .gray
+                        )
+                    }
+                    .padding(.horizontal)
+
+                    // Altitude info
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(strings.startAltitude)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)")
+                                .font(.headline)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "arrow.right")
+                            .foregroundColor(.secondary)
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(strings.endAltitude)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("\(settings.formatAltitude(run.endAltitude)) \(units.altitudeUnit)")
+                                .font(.headline)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+
+                    Spacer()
+                        .frame(height: 30)
+                }
+            }
+        }
+        .alert(strings.deleteRunConfirmTitle, isPresented: $showDeleteConfirm) {
+            Button(strings.cancel, role: .cancel) { }
+            Button(strings.delete, role: .destructive) {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    onDelete()
+                }
+            }
+        } message: {
+            Text(strings.deleteRunConfirmMessage)
+        }
+    }
+}
+
+// MARK: - Run Stat Card
+
+struct RunStatCard: View {
+    let icon: String
+    let title: String
+    let value: String
+    let unit: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                Spacer()
+            }
+
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .monospacedDigit()
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
     }
 }
 

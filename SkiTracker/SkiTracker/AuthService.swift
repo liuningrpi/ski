@@ -45,11 +45,12 @@ final class AuthService: NSObject, ObservableObject {
 
     // For Apple Sign-In
     private var currentNonce: String?
+    private var authStateHandle: AuthStateDidChangeListenerHandle?
 
     private override init() {
         super.init()
         // Listen to auth state changes
-        Auth.auth().addStateDidChangeListener { [weak self] _, user in
+        authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             DispatchQueue.main.async {
                 if let user = user {
                     // Determine provider

@@ -106,6 +106,12 @@ struct TrackSession: Codable, Identifiable {
         segments.filter { $0.type == .lift }
     }
 
+    /// Delete a specific run by ID
+    mutating func deleteRun(id: UUID) {
+        segments.removeAll { $0.id == id }
+        LoggingService.shared.logRunDeleted(runId: id, reason: "User deleted from history")
+    }
+
     // MARK: - Computed Statistics
 
     /// Total duration in seconds

@@ -117,6 +117,26 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    // MARK: - Update
+
+    /// Update a session (e.g., after deleting a run)
+    func update(_ session: TrackSession) {
+        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
+            var allSessions = sessions
+            allSessions[index] = session
+            saveAll(allSessions)
+        }
+    }
+
+    /// Delete a run from a session
+    func deleteRun(runId: UUID, fromSession sessionId: UUID) {
+        if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
+            var session = sessions[index]
+            session.deleteRun(id: runId)
+            update(session)
+        }
+    }
+
     // MARK: - Convenience
 
     /// The most recent session (for backward compatibility)

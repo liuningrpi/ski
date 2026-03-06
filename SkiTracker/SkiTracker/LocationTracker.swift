@@ -58,11 +58,9 @@ final class LocationTracker: NSObject, ObservableObject {
 
     /// Enable background location updates (call after authorization is granted)
     private func configureBackgroundUpdates() {
-        // Only enable background updates if authorized for "Always"
-        if authorizationStatus == .authorizedAlways {
-            locationManager.allowsBackgroundLocationUpdates = true
-            locationManager.showsBackgroundLocationIndicator = true
-        }
+        let enabled = isTracking && authorizationStatus == .authorizedAlways
+        locationManager.allowsBackgroundLocationUpdates = enabled
+        locationManager.showsBackgroundLocationIndicator = enabled
     }
 
     // MARK: - Public Methods
@@ -100,7 +98,13 @@ final class LocationTracker: NSObject, ObservableObject {
         trackingStartDate = Date()
         isTracking = true
         errorMessage = nil
+        configureBackgroundUpdates()
         locationManager.startUpdatingLocation()
+
+        if authorizationStatus == .authorizedWhenInUse {
+            requestAlwaysPermission()
+            errorMessage = strings.locationBackgroundAccessRecommended
+        }
 
         LoggingService.shared.logSessionStart()
     }
@@ -109,8 +113,9 @@ final class LocationTracker: NSObject, ObservableObject {
     func stopTracking() {
         guard isTracking else { return }
         locationManager.stopUpdatingLocation()
-        segmenter.finalizeCurrentSegment()
         isTracking = false
+        configureBackgroundUpdates()
+        segmenter.finalizeCurrentSegment()
 
         LoggingService.shared.logSessionEnd(
             runCount: segmenter.skiingRunCount,
@@ -174,6 +179,10 @@ extension LocationTracker: CLLocationManagerDelegate {
         DispatchQueue.main.async {
             self.authorizationStatus = manager.authorizationStatus
             self.configureBackgroundUpdates()
+            if self.authorizationStatus == .authorizedAlways,
+               self.errorMessage == SettingsManager.shared.strings.locationBackgroundAccessRecommended {
+                self.errorMessage = nil
+            }
         }
     }
 

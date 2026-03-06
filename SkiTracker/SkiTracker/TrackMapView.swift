@@ -39,6 +39,8 @@ struct TrackMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        mapView.showsUserLocation = followUser
+
         // Remove old overlays and annotations
         mapView.removeOverlays(mapView.overlays)
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
@@ -68,14 +70,24 @@ struct TrackMapView: UIViewRepresentable {
             mapView.addAnnotation(annotation)
         }
 
-        // Auto-follow last point
         if followUser, let last = coordinates.last {
+            // Auto-follow last point for live tracking
             let region = MKCoordinateRegion(
                 center: last,
                 latitudinalMeters: 1200,
                 longitudinalMeters: 1200
             )
             mapView.setRegion(region, animated: true)
+        } else {
+            // Fit historic route into viewport so the run is centered and readable.
+            let rect = polyline.boundingMapRect
+            if !rect.isNull && !rect.isEmpty {
+                mapView.setVisibleMapRect(
+                    rect,
+                    edgePadding: UIEdgeInsets(top: 40, left: 24, bottom: 40, right: 24),
+                    animated: true
+                )
+            }
         }
     }
 

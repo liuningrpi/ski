@@ -26,6 +26,8 @@ struct ContentView: View {
     @State private var liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
     @State private var isPollingHeartRate = false
     @State private var activeLiveSessionId: String?
+    @State private var isLivePanelCollapsed = false
+    @State private var persistedRunIDs: Set<UUID> = []
 
     var body: some View {
         let strings = settings.strings
@@ -92,10 +94,16 @@ struct ContentView: View {
             } message: {
                 Text(strings.stopConfirmMessage)
             }
+            .onAppear {
+                tracker.segmenter.onSegmentCompleted = { segment in
+                    persistCompletedRun(segment)
+                }
+            }
             .onDisappear {
                 statsTimer?.invalidate()
                 HeartRateService.shared.stopLiveUpdates()
                 watchHeartRateReceiver.endLiveSession()
+                tracker.segmenter.onSegmentCompleted = nil
             }
             .onReceive(watchHeartRateReceiver.$liveStats) { stats in
                 guard tracker.isTracking else { return }
@@ -163,66 +171,113 @@ struct ContentView: View {
                 .padding(.vertical, 4)
                 .background(stateColor(segmenter.currentState).opacity(0.15))
                 .cornerRadius(8)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isLivePanelCollapsed.toggle()
+                    }
+                } label: {
+                    Image(systemName: isLivePanelCollapsed ? "chevron.up" : "chevron.down")
+                        .font(.caption.bold())
+                        .foregroundColor(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color(.systemGray5))
+                        .clipShape(Circle())
+                }
             }
             .padding(.horizontal)
             .padding(.top, 12)
 
-            // Run counter
-            HStack(spacing: 16) {
-                // Runs completed
-                HStack(spacing: 4) {
-                    Image(systemName: "figure.skiing.downhill")
-                        .foregroundColor(.blue)
-                    Text("\(segmenter.skiingRunCount)")
-                        .fontWeight(.bold)
-                    Text(strings.runsCount)
+            if isLivePanelCollapsed {
+                HStack(spacing: 16) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "figure.skiing.downhill")
+                            .foregroundColor(.blue)
+                        Text("\(segmenter.skiingRunCount)")
+                            .fontWeight(.bold)
+                        Text(strings.runsCount)
+                            .foregroundColor(.secondary)
+                    }
+                    .font(.caption)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                            .foregroundColor(.green)
+                        Text("\(settings.formatDistance(session.totalDistanceKm)) \(units.distanceUnit)")
+                            .fontWeight(.bold)
+                    }
+                    .font(.caption)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "gauge.with.needle.fill")
+                            .foregroundColor(.orange)
+                        Text("\(settings.formatSpeed(session.maxSpeedKmh)) \(units.speedUnit)")
+                            .fontWeight(.bold)
+                    }
+                    .font(.caption)
+
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            } else {
+                // Run counter
+                HStack(spacing: 16) {
+                    // Runs completed
+                    HStack(spacing: 4) {
+                        Image(systemName: "figure.skiing.downhill")
+                            .foregroundColor(.blue)
+                        Text("\(segmenter.skiingRunCount)")
+                            .fontWeight(.bold)
+                        Text(strings.runsCount)
+                            .foregroundColor(.secondary)
+                    }
+                    .font(.caption)
+
+                    // Lifts taken
+                    HStack(spacing: 4) {
+                        Image(systemName: "cablecar")
+                            .foregroundColor(.orange)
+                        Text("\(segmenter.liftCount)")
+                            .fontWeight(.bold)
+                    }
+                    .font(.caption)
+
+                    // Vertical drop
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down")
+                            .foregroundColor(.green)
+                        Text("\(settings.formatAltitude(segmenter.totalVerticalDrop))")
+                            .fontWeight(.bold)
+                        Text(units.altitudeUnit)
+                            .foregroundColor(.secondary)
+                    }
+                    .font(.caption)
+
+                    Spacer()
+                }
+                .padding(.horizontal)
+
+                StatsView(
+                    durationFormatted: session.durationFormatted,
+                    distanceKm: session.totalDistanceKm,
+                    maxSpeedKmh: session.maxSpeedKmh,
+                    avgSpeedKmh: session.avgSpeedKmh,
+                    maxAltitude: session.maxAltitude,
+                    elevationDrop: session.elevationDrop,
+                    pointCount: session.points.count,
+                    showHeartRate: true,
+                    maxHeartRateBPM: liveHeartRateStats.maxBPM,
+                    avgHeartRateBPM: liveHeartRateStats.avgBPM
+                )
+
+                if statsTick >= 20 && liveHeartRateStats.maxBPM == nil {
+                    Text(strings.waitingHeartRateData)
+                        .font(.caption2)
                         .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                 }
-                .font(.caption)
-
-                // Lifts taken
-                HStack(spacing: 4) {
-                    Image(systemName: "cablecar")
-                        .foregroundColor(.orange)
-                    Text("\(segmenter.liftCount)")
-                        .fontWeight(.bold)
-                }
-                .font(.caption)
-
-                // Vertical drop
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.down")
-                        .foregroundColor(.green)
-                    Text("\(settings.formatAltitude(segmenter.totalVerticalDrop))")
-                        .fontWeight(.bold)
-                    Text(units.altitudeUnit)
-                        .foregroundColor(.secondary)
-                }
-                .font(.caption)
-
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            StatsView(
-                durationFormatted: session.durationFormatted,
-                distanceKm: session.totalDistanceKm,
-                maxSpeedKmh: session.maxSpeedKmh,
-                avgSpeedKmh: session.avgSpeedKmh,
-                maxAltitude: session.maxAltitude,
-                elevationDrop: session.elevationDrop,
-                pointCount: session.points.count,
-                showHeartRate: true,
-                maxHeartRateBPM: liveHeartRateStats.maxBPM,
-                avgHeartRateBPM: liveHeartRateStats.avgBPM
-            )
-
-            if statsTick >= 20 && liveHeartRateStats.maxBPM == nil {
-                Text(strings.waitingHeartRateData)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
             }
         }
     }
@@ -366,6 +421,8 @@ struct ContentView: View {
 
         let liveSessionId = UUID().uuidString
         activeLiveSessionId = liveSessionId
+        isLivePanelCollapsed = false
+        persistedRunIDs.removeAll()
 
         liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
         isPollingHeartRate = false
@@ -390,18 +447,12 @@ struct ContentView: View {
         statsTimer?.invalidate()
         statsTimer = nil
         tracker.stopTracking()
+        let autoSavedCount = persistCompletedRunsFromSegmenter()
 
-        let session = tracker.buildSession()
-        sessionStore.save(session)
-
-        if let user = AuthService.shared.currentUser {
-            let latestSessions = [session] + sessionStore.sessions
-            Task {
-                await LeaderboardService.shared.refreshLeaderboard(for: user, localSessions: latestSessions)
-            }
-        } else {
-            let latestSessions = [session] + sessionStore.sessions
-            LeaderboardService.shared.useLocalOnly(user: nil, sessions: latestSessions)
+        if autoSavedCount == 0 {
+            let session = tracker.buildSession()
+            sessionStore.save(session)
+            refreshLeaderboard(newSessions: [session])
         }
 
         HeartRateService.shared.stopLiveUpdates()
@@ -409,6 +460,7 @@ struct ContentView: View {
         liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
         isPollingHeartRate = false
         activeLiveSessionId = nil
+        persistedRunIDs.removeAll()
         statsTick = 0
     }
 
@@ -419,6 +471,53 @@ struct ContentView: View {
         )
         session.points = tracker.locations.map { TrackPoint(from: $0) }
         return session
+    }
+
+    private func buildSession(from run: RunSegment) -> TrackSession {
+        var session = TrackSession(
+            startedAt: run.startTime,
+            deviceInfo: nil
+        )
+        session.endedAt = run.endTime ?? run.points.last?.timestamp ?? Date()
+        session.points = run.points
+        session.segments = [run]
+        return session
+    }
+
+    private func persistCompletedRun(_ segment: RunSegment) {
+        guard segment.type == .skiing else { return }
+        guard !persistedRunIDs.contains(segment.id) else { return }
+
+        let session = buildSession(from: segment)
+        sessionStore.save(session)
+        persistedRunIDs.insert(segment.id)
+        refreshLeaderboard(newSessions: [session])
+    }
+
+    private func persistCompletedRunsFromSegmenter() -> Int {
+        var newSessions: [TrackSession] = []
+        for run in tracker.segmenter.skiingRuns where !persistedRunIDs.contains(run.id) {
+            let session = buildSession(from: run)
+            sessionStore.save(session)
+            persistedRunIDs.insert(run.id)
+            newSessions.append(session)
+        }
+        if !newSessions.isEmpty {
+            refreshLeaderboard(newSessions: newSessions)
+        }
+        return newSessions.count
+    }
+
+    private func refreshLeaderboard(newSessions: [TrackSession]) {
+        guard !newSessions.isEmpty else { return }
+        let latestSessions = newSessions + sessionStore.sessions
+        if let user = AuthService.shared.currentUser {
+            Task {
+                await LeaderboardService.shared.refreshLeaderboard(for: user, localSessions: latestSessions)
+            }
+        } else {
+            LeaderboardService.shared.useLocalOnly(user: nil, sessions: latestSessions)
+        }
     }
 
     private func startLiveHeartRateUpdates() {

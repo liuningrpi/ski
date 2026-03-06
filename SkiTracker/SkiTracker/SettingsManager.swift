@@ -552,6 +552,12 @@ struct LocalizedStrings {
     var heartRateUnit: String {
         "bpm"
     }
+
+    var waitingHeartRateData: String {
+        language == .chinese
+            ? "正在等待 Apple Watch 心率同步，请确认手表佩戴正常，并已在 iPhone 的“健康”里允许本应用读取心率。"
+            : "Waiting for Apple Watch heart-rate sync. Confirm watch is worn and Health permissions allow heart-rate read for this app."
+    }
 }
 
 // MARK: - Settings Manager

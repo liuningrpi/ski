@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showStopConfirm = false
     @State private var liveSession: TrackSession?
+    @ObservedObject private var watchHeartRateReceiver = WatchHeartRateReceiver.shared
 
     /// Timer to refresh stats every second
     @State private var statsTimer: Timer?
@@ -23,6 +24,8 @@ struct ContentView: View {
     /// Trigger for stats refresh
     @State private var statsTick: Int = 0
     @State private var liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+    @State private var isPollingHeartRate = false
+    @State private var activeLiveSessionId: String?
 
     var body: some View {
         let strings = settings.strings
@@ -92,6 +95,12 @@ struct ContentView: View {
             .onDisappear {
                 statsTimer?.invalidate()
                 HeartRateService.shared.stopLiveUpdates()
+                watchHeartRateReceiver.endLiveSession()
+            }
+            .onReceive(watchHeartRateReceiver.$liveStats) { stats in
+                guard tracker.isTracking else { return }
+                guard stats.maxBPM != nil || stats.avgBPM != nil else { return }
+                liveHeartRateStats = stats
             }
         }
     }
@@ -207,6 +216,14 @@ struct ContentView: View {
                 maxHeartRateBPM: liveHeartRateStats.maxBPM,
                 avgHeartRateBPM: liveHeartRateStats.avgBPM
             )
+
+            if statsTick >= 20 && liveHeartRateStats.maxBPM == nil {
+                Text(strings.waitingHeartRateData)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
         }
     }
 
@@ -345,16 +362,28 @@ struct ContentView: View {
 
     private func startTracking() {
         tracker.startTracking()
+        guard tracker.isTracking else { return }
+
+        let liveSessionId = UUID().uuidString
+        activeLiveSessionId = liveSessionId
+
         liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+        isPollingHeartRate = false
         statsTick = 0
         statsTimer?.invalidate()
 
         // Start a timer to refresh stats every second
         statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             statsTick += 1
+            if statsTick % 10 == 0 {
+                pollLiveHeartRate()
+            }
         }
 
         startLiveHeartRateUpdates()
+        if let start = tracker.trackingStartDate {
+            watchHeartRateReceiver.beginLiveSession(sessionId: liveSessionId, startedAt: start)
+        }
     }
 
     private func stopAndSave() {
@@ -376,7 +405,10 @@ struct ContentView: View {
         }
 
         HeartRateService.shared.stopLiveUpdates()
+        watchHeartRateReceiver.endLiveSession()
         liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+        isPollingHeartRate = false
+        activeLiveSessionId = nil
         statsTick = 0
     }
 
@@ -398,6 +430,40 @@ struct ContentView: View {
         HeartRateService.shared.startLiveUpdates(start: start) { stats in
             if tracker.isTracking {
                 liveHeartRateStats = stats
+            }
+        }
+    }
+
+    private func pollLiveHeartRate() {
+        guard tracker.isTracking,
+              let start = tracker.trackingStartDate,
+              !isPollingHeartRate else {
+            return
+        }
+
+        // Watch live stream is authoritative when active/recent.
+        if watchHeartRateReceiver.hasRecentSample {
+            return
+        }
+
+        isPollingHeartRate = true
+        let end = Date()
+
+        Task {
+            let polled = await HeartRateService.shared.fetchStats(start: start, end: end)
+            await MainActor.run {
+                if tracker.isTracking {
+                    let maxBPM = max(liveHeartRateStats.maxBPM ?? 0, polled.maxBPM ?? 0)
+                    let avgCandidates = [liveHeartRateStats.avgBPM, polled.avgBPM].compactMap { $0 }
+                    let avgBPM = avgCandidates.isEmpty ? nil : (avgCandidates.reduce(0, +) / Double(avgCandidates.count))
+                    if maxBPM > 0 || avgBPM != nil {
+                        liveHeartRateStats = HeartRateStats(
+                            maxBPM: maxBPM > 0 ? maxBPM : nil,
+                            avgBPM: avgBPM
+                        )
+                    }
+                }
+                isPollingHeartRate = false
             }
         }
     }

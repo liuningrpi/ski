@@ -447,13 +447,7 @@ struct ContentView: View {
         statsTimer?.invalidate()
         statsTimer = nil
         tracker.stopTracking()
-        let autoSavedCount = persistCompletedRunsFromSegmenter()
-
-        if autoSavedCount == 0 {
-            let session = tracker.buildSession()
-            sessionStore.save(session)
-            refreshLeaderboard(newSessions: [session])
-        }
+        _ = persistCompletedRunsFromSegmenter()
 
         HeartRateService.shared.stopLiveUpdates()
         watchHeartRateReceiver.endLiveSession()
@@ -513,7 +507,11 @@ struct ContentView: View {
         let latestSessions = newSessions + sessionStore.sessions
         if let user = AuthService.shared.currentUser {
             Task {
-                await LeaderboardService.shared.refreshLeaderboard(for: user, localSessions: latestSessions)
+                await LeaderboardService.shared.refreshLeaderboard(
+                    for: user,
+                    localSessions: latestSessions,
+                    showLoading: false
+                )
             }
         } else {
             LeaderboardService.shared.useLocalOnly(user: nil, sessions: latestSessions)

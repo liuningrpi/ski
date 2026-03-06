@@ -38,11 +38,11 @@ final class LocationTracker: NSObject, ObservableObject {
 
     // MARK: - Configuration Constants
 
-    /// Minimum horizontal accuracy to accept a point (meters)
-    private let maxAcceptableAccuracy: Double = 20.0
+    /// TEMP: relaxed for stair-test mode. Revert tighter values for production.
+    private let maxAcceptableAccuracy: Double = 120.0
 
-    /// Distance filter in meters (minimum movement to trigger update)
-    private let defaultDistanceFilter: Double = 5.0
+    /// TEMP: lower movement threshold so short stair movement still updates.
+    private let defaultDistanceFilter: Double = 1.0
 
     // MARK: - Init
 
@@ -115,7 +115,8 @@ final class LocationTracker: NSObject, ObservableObject {
         locationManager.stopUpdatingLocation()
         isTracking = false
         configureBackgroundUpdates()
-        segmenter.finalizeCurrentSegment()
+        // User explicitly stopped: persist an in-progress descending run even if not yet transitioned.
+        segmenter.finalizeCurrentSegment(forceIncludeCurrentSkiing: true)
 
         LoggingService.shared.logSessionEnd(
             runCount: segmenter.skiingRunCount,
@@ -160,13 +161,13 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Dynamic distance filter based on speed (power saving)
     private func adjustDistanceFilter(for speed: Double) {
         if speed < 1.0 {
-            // Nearly stationary — reduce updates
-            locationManager.distanceFilter = 10.0
+            // Sensitive updates for low-speed stair movement.
+            locationManager.distanceFilter = 0.8
         } else if speed < 5.0 {
-            locationManager.distanceFilter = 5.0
+            locationManager.distanceFilter = 1.0
         } else {
             // High speed skiing — fine-grained tracking
-            locationManager.distanceFilter = 3.0
+            locationManager.distanceFilter = 2.0
         }
     }
 }

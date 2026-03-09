@@ -38,11 +38,11 @@ final class LocationTracker: NSObject, ObservableObject {
 
     // MARK: - Configuration Constants
 
-    /// TEMP: relaxed for stair-test mode. Revert tighter values for production.
-    private let maxAcceptableAccuracy: Double = 120.0
+    /// Production GPS quality filter for ski tracking.
+    private let maxAcceptableAccuracy: Double = 35.0
 
-    /// TEMP: lower movement threshold so short stair movement still updates.
-    private let defaultDistanceFilter: Double = 1.0
+    /// Balanced update frequency for outdoor skiing.
+    private let defaultDistanceFilter: Double = 5.0
 
     // MARK: - Init
 
@@ -161,13 +161,12 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Dynamic distance filter based on speed (power saving)
     private func adjustDistanceFilter(for speed: Double) {
         if speed < 1.0 {
-            // Sensitive updates for low-speed stair movement.
-            locationManager.distanceFilter = 0.8
+            locationManager.distanceFilter = 3.0
         } else if speed < 5.0 {
-            locationManager.distanceFilter = 1.0
+            locationManager.distanceFilter = 5.0
         } else {
-            // High speed skiing — fine-grained tracking
-            locationManager.distanceFilter = 2.0
+            // High speed skiing.
+            locationManager.distanceFilter = 8.0
         }
     }
 }

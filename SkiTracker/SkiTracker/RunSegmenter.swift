@@ -110,34 +110,37 @@ final class RunSegmenter: ObservableObject {
     // MARK: - Configuration Thresholds
 
     struct Config {
-        // TEMP: stair-test sensitive profile for indoor walking up/down.
-        // Revert these values for production mountain tracking.
+        // Production profile for outdoor ski run/lift detection.
 
         // Speed thresholds (m/s)
-        var skiingMinSpeed: Double = 0.6        // ~2.2 km/h
-        var liftMinSpeed: Double = 0.1
-        var liftMaxSpeed: Double = 3.0
-        var stoppedMaxSpeed: Double = 0.35
+        var skiingMinSpeed: Double = 2.0
+        var liftMinSpeed: Double = 0.5
+        var liftMaxSpeed: Double = 6.5
+        var stoppedMaxSpeed: Double = 0.8
 
         // Altitude change rate thresholds (m/s)
-        var skiingDescentRate: Double = -0.08   // Descending
-        var liftAscentRate: Double = 0.08       // Ascending
+        var skiingDescentRate: Double = -0.25   // Descending
+        var liftAscentRate: Double = 0.18       // Ascending
 
         // Time windows (seconds)
-        var windowSize: Int = 4
-        var skiingConfirmWindow: Int = 3
-        var liftConfirmWindow: Int = 3
-        var stoppedConfirmWindow: Int = 6
-        var debounceWindow: Int = 3
+        var windowSize: Int = 8
+        var skiingConfirmWindow: Int = 5
+        var liftConfirmWindow: Int = 5
+        var stoppedConfirmWindow: Int = 8
+        var debounceWindow: Int = 5
 
         // Minimum run duration (seconds)
-        var minRunDuration: Double = 5.0
+        var minRunDuration: Double = 20.0
+
+        // Require a clear downhill move before starting a new run.
+        // 5.0 m ~= 16.4 ft
+        var minRunStartDropMeters: Double = 5.0
 
         // Accuracy filter
-        var maxAcceptableAccuracy: Double = 120.0
+        var maxAcceptableAccuracy: Double = 35.0
 
         // Vote threshold
-        var voteThreshold: Double = 0.55
+        var voteThreshold: Double = 0.65
     }
 
     // MARK: - Published State
@@ -248,10 +251,34 @@ final class RunSegmenter: ObservableObject {
             }
         }
 
+        // Prevent over-sensitive run splitting:
+        // only allow non-skiing -> skiing transition after clear altitude drop.
+        if detectedState == .skiing,
+           currentState != .skiing,
+           !hasRequiredDropToStartRun(currentAltitude: trackPoint.altitude) {
+            return
+        }
+
         // State transition logic
         if detectedState != currentState {
             handleStateTransition(from: currentState, to: detectedState, at: currentTime, trackPoint: trackPoint)
         }
+    }
+
+    private func hasRequiredDropToStartRun(currentAltitude: Double) -> Bool {
+        let requiredDrop = config.minRunStartDropMeters
+        guard requiredDrop > 0 else { return true }
+
+        // Use the highest altitude in the active non-skiing segment as the reference.
+        if let segment = currentSegment, segment.type != .skiing, !segment.points.isEmpty {
+            let referenceAltitude = segment.points.map(\.altitude).max() ?? currentAltitude
+            return (referenceAltitude - currentAltitude) >= requiredDrop
+        }
+
+        // Fallback for startup/no active segment yet.
+        guard !sampleWindow.isEmpty else { return false }
+        let referenceAltitude = sampleWindow.map(\.altitude).max() ?? currentAltitude
+        return (referenceAltitude - currentAltitude) >= requiredDrop
     }
 
     private func detectState() -> SkiingState {

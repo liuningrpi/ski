@@ -231,6 +231,42 @@ struct LocalizedStrings {
         language == .chinese ? "单位" : "Units"
     }
 
+    var supportTitle: String {
+        language == .chinese ? "支持开发者" : "Support the Developer"
+    }
+
+    var supportHeadline: String {
+        language == .chinese ? "如果这个 App 很有用，请请我喝杯咖啡。" : "If this app made your ski day better, buy me a coffee."
+    }
+
+    var supportFootnote: String {
+        language == .chinese ? "一次性打赏，无订阅。" : "One-time tip. No subscription."
+    }
+
+    var supportSmallTip: String {
+        language == .chinese ? "美式咖啡" : "Black Coffee"
+    }
+
+    var supportLargeTip: String {
+        language == .chinese ? "卡布奇诺" : "Cappuccino"
+    }
+
+    var supportThankYou: String {
+        language == .chinese ? "感谢支持，这会帮助我继续改进这个 App。" : "Thanks for the support. It helps me keep improving the app."
+    }
+
+    var supportPending: String {
+        language == .chinese ? "付款正在处理中。" : "Payment is pending."
+    }
+
+    var supportUnavailable: String {
+        language == .chinese ? "打赏暂不可用。请稍后再试。" : "Tips are unavailable right now. Try again later."
+    }
+
+    var supportPurchaseFailed: String {
+        language == .chinese ? "支付未完成。" : "Purchase did not complete."
+    }
+
     // Day Summary
     var daySummary: String {
         language == .chinese ? "当日总结" : "Day Summary"
@@ -555,8 +591,41 @@ struct LocalizedStrings {
 
     var waitingHeartRateData: String {
         language == .chinese
-            ? "正在等待 Apple Watch 心率同步，请确认手表佩戴正常，并已在 iPhone 的“健康”里允许本应用读取心率。"
+            ? "正在等待 Apple Watch 心率同步，请确认手表佩戴正常，并已在 iPhone 的「健康」里允许本应用读取心率。"
             : "Waiting for Apple Watch heart-rate sync. Confirm watch is worn and Health permissions allow heart-rate read for this app."
+    }
+
+    // Feedback
+    var feedbackTitle: String {
+        language == .chinese ? "意见反馈" : "Feedback"
+    }
+
+    var feedbackButton: String {
+        language == .chinese ? "发送反馈" : "Send Feedback"
+    }
+
+    var feedbackDescription: String {
+        language == .chinese ? "告诉我们您的建议或遇到的问题" : "Share your suggestions or report issues"
+    }
+
+    var feedbackPlaceholder: String {
+        language == .chinese ? "请输入您的意见或建议..." : "Enter your feedback here..."
+    }
+
+    var feedbackSending: String {
+        language == .chinese ? "发送中..." : "Sending..."
+    }
+
+    var feedbackSent: String {
+        language == .chinese ? "感谢您的反馈！" : "Thank you for your feedback!"
+    }
+
+    var feedbackFailed: String {
+        language == .chinese ? "发送失败，请稍后重试" : "Failed to send. Please try again later."
+    }
+
+    var feedbackEmpty: String {
+        language == .chinese ? "请输入反馈内容" : "Please enter your feedback"
     }
 }
 

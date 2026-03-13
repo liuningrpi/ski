@@ -132,6 +132,40 @@ final class LoggingService {
         info("Run deleted", category: "Runs", metadata: metadata)
     }
 
+    func logFeedback(userId: String, userEmail: String, feedback: String, timestamp: String) {
+        // Log to regular logs
+        let metadata: [String: String] = [
+            "userId": userId,
+            "userEmail": userEmail,
+            "timestamp": timestamp
+        ]
+        info("User feedback submitted", category: "Feedback", metadata: metadata)
+
+        // Also store in dedicated feedback collection for email forwarding
+        // This collection can be monitored by Firebase Cloud Functions to send emails
+        let feedbackData: [String: Any] = [
+            "userId": userId,
+            "userEmail": userEmail,
+            "feedback": feedback,
+            "timestamp": Timestamp(date: Date()),
+            "timestampISO": timestamp,
+            "deviceInfo": deviceInfo,
+            "appVersion": appVersion,
+            "subject": "[SkiTracker User Comment]",
+            "targetEmail": "pulseai@pulseaisolution.com",
+            "status": "pending"  // Can be updated by Cloud Function after sending
+        ]
+
+        Task {
+            do {
+                try await db.collection("user_feedback").addDocument(data: feedbackData)
+                print("[LoggingService] Feedback saved to Firebase")
+            } catch {
+                print("[LoggingService] Failed to save feedback: \(error)")
+            }
+        }
+    }
+
     // MARK: - Core Logging
 
     private func log(level: LogLevel, category: String, message: String, metadata: [String: String]?) {

@@ -814,10 +814,8 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Allow SkiTracker to read heart rate during ski sessions.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Allow SkiTracker to write ski workouts for live heart-rate tracking.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKBackgroundModes = "workout-processing";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.pulseaisolution.skitracker.SkiTracker;
-				INFOPLIST_KEY_WKBackgroundModes = (
-					"workout-processing",
-				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -853,10 +851,8 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Allow SkiTracker to read heart rate during ski sessions.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Allow SkiTracker to write ski workouts for live heart-rate tracking.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKBackgroundModes = "workout-processing";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.pulseaisolution.skitracker.SkiTracker;
-				INFOPLIST_KEY_WKBackgroundModes = (
-					"workout-processing",
-				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

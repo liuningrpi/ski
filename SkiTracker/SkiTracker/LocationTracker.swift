@@ -17,6 +17,9 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Whether tracking is currently active
     @Published var isTracking: Bool = false
 
+    /// Whether tracking is paused (session not ended)
+    @Published var isPaused: Bool = false
+
     /// Raw CLLocation points collected during this session
     @Published var locations: [CLLocation] = []
 
@@ -58,7 +61,7 @@ final class LocationTracker: NSObject, ObservableObject {
 
     /// Enable background location updates (call after authorization is granted)
     private func configureBackgroundUpdates() {
-        let enabled = isTracking && authorizationStatus == .authorizedAlways
+        let enabled = isTracking && !isPaused && authorizationStatus == .authorizedAlways
         locationManager.allowsBackgroundLocationUpdates = enabled
         locationManager.showsBackgroundLocationIndicator = enabled
     }
@@ -97,6 +100,7 @@ final class LocationTracker: NSObject, ObservableObject {
         segmenter.reset()
         trackingStartDate = Date()
         isTracking = true
+        isPaused = false
         errorMessage = nil
         configureBackgroundUpdates()
         locationManager.startUpdatingLocation()
@@ -114,6 +118,7 @@ final class LocationTracker: NSObject, ObservableObject {
         guard isTracking else { return }
         locationManager.stopUpdatingLocation()
         isTracking = false
+        isPaused = false
         configureBackgroundUpdates()
         // User explicitly stopped: persist an in-progress descending run even if not yet transitioned.
         segmenter.finalizeCurrentSegment(forceIncludeCurrentSkiing: true)
@@ -124,6 +129,22 @@ final class LocationTracker: NSObject, ObservableObject {
             totalDistance: segmenter.totalSkiingDistance,
             totalVertical: segmenter.totalVerticalDrop
         )
+    }
+
+    /// Pause recording updates without ending current session.
+    func pauseTracking() {
+        guard isTracking, !isPaused else { return }
+        locationManager.stopUpdatingLocation()
+        isPaused = true
+        configureBackgroundUpdates()
+    }
+
+    /// Resume recording updates for current session.
+    func resumeTracking() {
+        guard isTracking, isPaused else { return }
+        isPaused = false
+        configureBackgroundUpdates()
+        locationManager.startUpdatingLocation()
     }
 
     /// Build a TrackSession from the current recorded data
@@ -187,7 +208,7 @@ extension LocationTracker: CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations newLocations: [CLLocation]) {
-        guard isTracking else { return }
+        guard isTracking, !isPaused else { return }
 
         if errorMessage != nil {
             DispatchQueue.main.async {

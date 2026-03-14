@@ -1,6 +1,60 @@
 import SwiftUI
 import CoreLocation
 
+private func segmentStyle(for state: SkiingState) -> TrackMapView.SegmentStyle {
+    switch state {
+    case .skiing: return .skiing
+    case .lift: return .lift
+    case .stopped, .idle: return .stopped
+    }
+}
+
+private func mapSegments(for session: TrackSession) -> [TrackMapView.Segment] {
+    let fromSegments = session.segments.compactMap { segment -> TrackMapView.Segment? in
+        let coords = segment.points.map(\.coordinate)
+        guard coords.count >= 2 else { return nil }
+        return TrackMapView.Segment(coordinates: coords, style: segmentStyle(for: segment.type))
+    }
+    if !fromSegments.isEmpty {
+        return fromSegments
+    }
+
+    let coords = session.points.map(\.coordinate)
+    guard coords.count >= 2 else { return [] }
+    return [TrackMapView.Segment(coordinates: coords, style: .skiing)]
+}
+
+private func mapSegments(for run: RunSegment) -> [TrackMapView.Segment] {
+    let coords = run.points.map(\.coordinate)
+    guard coords.count >= 2 else { return [] }
+    return [TrackMapView.Segment(coordinates: coords, style: segmentStyle(for: run.type))]
+}
+
+private func mapSegments(for dayGroup: DayGroup) -> [TrackMapView.Segment] {
+    dayGroup.sessions.flatMap { mapSegments(for: $0) }
+}
+
+private struct TrackSegmentLegend: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 6) {
+                Circle().fill(Color.blue).frame(width: 8, height: 8)
+                Text("Skiing")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            HStack(spacing: 6) {
+                Circle().fill(Color.orange).frame(width: 8, height: 8)
+                Text("Lift")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal)
+    }
+}
+
 // MARK: - Day Group Model
 
 struct DayGroup: Identifiable {
@@ -309,6 +363,19 @@ struct DaySummaryView: View {
                     }
                     .padding(.top, 8)
 
+                    let daySegments = mapSegments(for: dayGroup)
+                    if !daySegments.isEmpty {
+                        TrackMapView(
+                            segments: daySegments,
+                            followUser: false,
+                            showEndMarker: true
+                        )
+                        .frame(height: 250)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                        TrackSegmentLegend()
+                    }
+
                     // Summary Stats Grid
                     LazyVGrid(columns: [
                         GridItem(.flexible()),
@@ -586,6 +653,19 @@ struct SessionDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    let sessionSegments = mapSegments(for: session)
+                    if !sessionSegments.isEmpty {
+                        TrackMapView(
+                            segments: sessionSegments,
+                            followUser: false,
+                            showEndMarker: true
+                        )
+                        .frame(height: 300)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                        TrackSegmentLegend()
+                    }
+
                     // Session info header
                     sessionHeader
 
@@ -593,17 +673,6 @@ struct SessionDetailView: View {
                     if !session.segments.isEmpty {
                         segmentSummary
                     }
-
-                    // Map with track polyline
-                    let coords = session.points.map { $0.coordinate }
-                    TrackMapView(
-                        coordinates: coords,
-                        followUser: false,
-                        showEndMarker: true
-                    )
-                    .frame(height: 300)
-                    .cornerRadius(12)
-                    .padding(.horizontal)
 
                     // Statistics
                     StatsView(
@@ -948,16 +1017,17 @@ struct RunDetailView: View {
                     .padding(.top)
 
                     // Map with track
-                    if !run.points.isEmpty {
-                        let coords = run.points.map { $0.coordinate }
+                    let runSegments = mapSegments(for: run)
+                    if !runSegments.isEmpty {
                         TrackMapView(
-                            coordinates: coords,
+                            segments: runSegments,
                             followUser: false,
                             showEndMarker: true
                         )
                         .frame(height: 250)
                         .cornerRadius(12)
                         .padding(.horizontal)
+                        TrackSegmentLegend()
                     }
 
                     // Stats grid

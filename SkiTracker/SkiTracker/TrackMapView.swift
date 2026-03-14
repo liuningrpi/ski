@@ -7,21 +7,78 @@ import MapKit
 /// Uses UIViewRepresentable for reliable MKPolyline support across iOS versions.
 struct TrackMapView: UIViewRepresentable {
 
+    enum SegmentStyle: String {
+        case skiing
+        case lift
+        case stopped
+        case generic
+
+        var color: UIColor {
+            switch self {
+            case .skiing: return .systemBlue
+            case .lift: return .systemOrange
+            case .stopped: return .systemGray
+            case .generic: return .systemBlue
+            }
+        }
+    }
+
+    struct Segment: Identifiable {
+        let id = UUID()
+        let coordinates: [CLLocationCoordinate2D]
+        let style: SegmentStyle
+    }
+
     /// Array of coordinates to draw as a polyline
     let coordinates: [CLLocationCoordinate2D]
+
+    /// Optional segmented track for style-aware rendering.
+    let segments: [Segment]
 
     /// Whether to auto-follow the last point
     let followUser: Bool
 
+    /// Whether to auto-fit the full route when not following.
+    /// Keep this true for history detail pages; disable for live recording manual zoom/pan.
+    let fitToRouteWhenNotFollowing: Bool
+
     /// Optional: show a marker at the last point
     let showEndMarker: Bool
 
+    /// Increment this value to explicitly recenter map once.
+    let recenterTrigger: Int
+
+    /// Called when user manually interacts with the map (pan/zoom/rotate).
+    let onUserInteraction: (() -> Void)?
+
     init(coordinates: [CLLocationCoordinate2D],
          followUser: Bool = true,
-         showEndMarker: Bool = true) {
+         fitToRouteWhenNotFollowing: Bool = true,
+         showEndMarker: Bool = true,
+         recenterTrigger: Int = 0,
+         onUserInteraction: (() -> Void)? = nil) {
         self.coordinates = coordinates
+        self.segments = []
         self.followUser = followUser
+        self.fitToRouteWhenNotFollowing = fitToRouteWhenNotFollowing
         self.showEndMarker = showEndMarker
+        self.recenterTrigger = recenterTrigger
+        self.onUserInteraction = onUserInteraction
+    }
+
+    init(segments: [Segment],
+         followUser: Bool = true,
+         fitToRouteWhenNotFollowing: Bool = true,
+         showEndMarker: Bool = true,
+         recenterTrigger: Int = 0,
+         onUserInteraction: (() -> Void)? = nil) {
+        self.coordinates = []
+        self.segments = segments
+        self.followUser = followUser
+        self.fitToRouteWhenNotFollowing = fitToRouteWhenNotFollowing
+        self.showEndMarker = showEndMarker
+        self.recenterTrigger = recenterTrigger
+        self.onUserInteraction = onUserInteraction
     }
 
     // MARK: - UIViewRepresentable
@@ -39,15 +96,19 @@ struct TrackMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        context.coordinator.onUserInteraction = onUserInteraction
         mapView.showsUserLocation = followUser
 
         // Remove old overlays and annotations
         mapView.removeOverlays(mapView.overlays)
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
 
-        guard coordinates.count >= 2 else {
+        let displaySegments = effectiveSegments()
+        let allCoordinates = displaySegments.flatMap { $0.coordinates }
+
+        guard allCoordinates.count >= 2 else {
             // If we have a single point, center on it
-            if let first = coordinates.first {
+            if let first = allCoordinates.first {
                 let region = MKCoordinateRegion(
                     center: first,
                     latitudinalMeters: 1000,
@@ -58,19 +119,28 @@ struct TrackMapView: UIViewRepresentable {
             return
         }
 
-        // Draw polyline
-        let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-        mapView.addOverlay(polyline)
+        var combinedRect: MKMapRect = .null
+        for segment in displaySegments where segment.coordinates.count >= 2 {
+            let polyline = MKPolyline(coordinates: segment.coordinates, count: segment.coordinates.count)
+            polyline.title = segment.style.rawValue
+            mapView.addOverlay(polyline)
+            combinedRect = combinedRect.isNull ? polyline.boundingMapRect : combinedRect.union(polyline.boundingMapRect)
+        }
 
         // Add end marker
-        if showEndMarker, let last = coordinates.last {
+        if showEndMarker, let last = allCoordinates.last {
             let annotation = MKPointAnnotation()
             annotation.coordinate = last
             annotation.title = SettingsManager.shared.strings.currentLocation
             mapView.addAnnotation(annotation)
         }
 
-        if followUser, let last = coordinates.last {
+        let shouldRecenter = recenterTrigger != context.coordinator.lastRecenterTrigger
+        if shouldRecenter {
+            context.coordinator.lastRecenterTrigger = recenterTrigger
+        }
+
+        if (followUser || shouldRecenter), let last = allCoordinates.last {
             // Auto-follow last point for live tracking
             let region = MKCoordinateRegion(
                 center: last,
@@ -78,17 +148,24 @@ struct TrackMapView: UIViewRepresentable {
                 longitudinalMeters: 1200
             )
             mapView.setRegion(region, animated: true)
-        } else {
+        } else if fitToRouteWhenNotFollowing {
             // Fit historic route into viewport so the run is centered and readable.
-            let rect = polyline.boundingMapRect
-            if !rect.isNull && !rect.isEmpty {
+            if !combinedRect.isNull && !combinedRect.isEmpty {
                 mapView.setVisibleMapRect(
-                    rect,
+                    combinedRect,
                     edgePadding: UIEdgeInsets(top: 40, left: 24, bottom: 40, right: 24),
                     animated: true
                 )
             }
         }
+    }
+
+    private func effectiveSegments() -> [Segment] {
+        if !segments.isEmpty {
+            return segments
+        }
+        guard !coordinates.isEmpty else { return [] }
+        return [Segment(coordinates: coordinates, style: .generic)]
     }
 
     func makeCoordinator() -> Coordinator {
@@ -98,11 +175,14 @@ struct TrackMapView: UIViewRepresentable {
     // MARK: - Coordinator
 
     class Coordinator: NSObject, MKMapViewDelegate {
+        var lastRecenterTrigger: Int = 0
+        var onUserInteraction: (() -> Void)?
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor.systemBlue
+                let style = TrackMapView.SegmentStyle(rawValue: polyline.title ?? "") ?? .generic
+                renderer.strokeColor = style.color
                 renderer.lineWidth = 4.0
                 renderer.lineCap = .round
                 renderer.lineJoin = .round
@@ -126,6 +206,19 @@ struct TrackMapView: UIViewRepresentable {
             view?.markerTintColor = .systemRed
             view?.glyphImage = UIImage(systemName: "figure.skiing.downhill")
             return view
+        }
+
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            // Detect gesture-driven region changes so parent can stop auto-follow.
+            let interacted = mapView.subviews
+                .compactMap { $0.gestureRecognizers }
+                .flatMap { $0 }
+                .contains { recognizer in
+                    recognizer.state == .began || recognizer.state == .changed
+                }
+            if interacted {
+                onUserInteraction?()
+            }
         }
     }
 }

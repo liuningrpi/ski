@@ -28,6 +28,8 @@ struct ContentView: View {
     @State private var activeLiveSessionId: String?
     @State private var isLivePanelCollapsed = false
     @State private var persistedRunIDs: Set<UUID> = []
+    @State private var isLiveMapAutoFollow = true
+    @State private var liveMapRecenterTrigger = 0
 
     var body: some View {
         let strings = settings.strings
@@ -37,6 +39,27 @@ struct ContentView: View {
                 // Map layer (full screen)
                 mapLayer
                     .ignoresSafeArea(edges: .top)
+
+                if tracker.isTracking && !isLiveMapAutoFollow {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Button {
+                                isLiveMapAutoFollow = true
+                                liveMapRecenterTrigger += 1
+                            } label: {
+                                Image(systemName: "location.fill")
+                                    .foregroundColor(.white)
+                                    .padding(10)
+                                    .background(Color.blue)
+                                    .clipShape(Circle())
+                            }
+                            .padding(.trailing, 16)
+                            .padding(.top, 8)
+                        }
+                        Spacer()
+                    }
+                }
 
                 // Bottom control panel
                 VStack(spacing: 0) {
@@ -123,14 +146,22 @@ struct ContentView: View {
             TrackMapView(
                 coordinates: [],
                 followUser: false,
-                showEndMarker: false
+                fitToRouteWhenNotFollowing: false,
+                showEndMarker: false,
+                recenterTrigger: liveMapRecenterTrigger
             )
         } else {
             TrackMapView(
                 coordinates: coords,
-                followUser: true,
-                showEndMarker: true
-            )
+                followUser: tracker.isTracking ? isLiveMapAutoFollow : true,
+                fitToRouteWhenNotFollowing: !tracker.isTracking,
+                showEndMarker: true,
+                recenterTrigger: liveMapRecenterTrigger
+            ) {
+                if tracker.isTracking && isLiveMapAutoFollow {
+                    isLiveMapAutoFollow = false
+                }
+            }
         }
     }
 
@@ -149,12 +180,12 @@ struct ContentView: View {
             HStack {
                 // Recording indicator
                 Circle()
-                    .fill(Color.red)
+                    .fill(tracker.isPaused ? Color.yellow : Color.red)
                     .frame(width: 8, height: 8)
-                Text(strings.recording)
+                Text(tracker.isPaused ? strings.paused : strings.recording)
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(.red)
+                    .foregroundColor(tracker.isPaused ? .yellow : .red)
 
                 Spacer()
 
@@ -323,20 +354,40 @@ struct ContentView: View {
                 // Permission needed
                 permissionSection
             } else if tracker.isTracking {
-                // Stop button
-                Button {
-                    showStopConfirm = true
-                } label: {
-                    HStack {
-                        Image(systemName: "stop.fill")
-                        Text(strings.stopRecording)
+                HStack(spacing: 12) {
+                    Button {
+                        if tracker.isPaused {
+                            resumeTracking()
+                        } else {
+                            pauseTracking()
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: tracker.isPaused ? "play.fill" : "pause.fill")
+                            Text(tracker.isPaused ? strings.resumeRecording : strings.pauseRecording)
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(tracker.isPaused ? Color.blue : Color.orange)
+                        .cornerRadius(14)
                     }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.red)
-                    .cornerRadius(14)
+
+                    Button {
+                        showStopConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "stop.fill")
+                            Text(strings.stopRecording)
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red)
+                        .cornerRadius(14)
+                    }
                 }
                 .padding(.horizontal)
             } else {
@@ -422,24 +473,42 @@ struct ContentView: View {
         let liveSessionId = UUID().uuidString
         activeLiveSessionId = liveSessionId
         isLivePanelCollapsed = false
+        isLiveMapAutoFollow = true
+        liveMapRecenterTrigger += 1
         persistedRunIDs.removeAll()
 
         liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
         isPollingHeartRate = false
         statsTick = 0
-        statsTimer?.invalidate()
-
-        // Start a timer to refresh stats every second
-        statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            statsTick += 1
-            if statsTick % 10 == 0 {
-                pollLiveHeartRate()
-            }
-        }
+        startStatsTimer()
 
         startLiveHeartRateUpdates()
         if let start = tracker.trackingStartDate {
             watchHeartRateReceiver.beginLiveSession(sessionId: liveSessionId, startedAt: start)
+        }
+    }
+
+    private func pauseTracking() {
+        guard tracker.isTracking, !tracker.isPaused else { return }
+        tracker.pauseTracking()
+        statsTimer?.invalidate()
+        statsTimer = nil
+        HeartRateService.shared.stopLiveUpdates()
+        watchHeartRateReceiver.endLiveSession()
+        isPollingHeartRate = false
+    }
+
+    private func resumeTracking() {
+        guard tracker.isTracking, tracker.isPaused else { return }
+        tracker.resumeTracking()
+        startStatsTimer()
+        startLiveHeartRateUpdates()
+
+        if activeLiveSessionId == nil {
+            activeLiveSessionId = UUID().uuidString
+        }
+        if let sessionId = activeLiveSessionId {
+            watchHeartRateReceiver.beginLiveSession(sessionId: sessionId, startedAt: Date())
         }
     }
 
@@ -454,8 +523,19 @@ struct ContentView: View {
         liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
         isPollingHeartRate = false
         activeLiveSessionId = nil
+        isLiveMapAutoFollow = true
         persistedRunIDs.removeAll()
         statsTick = 0
+    }
+
+    private func startStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            statsTick += 1
+            if statsTick % 10 == 0 {
+                pollLiveHeartRate()
+            }
+        }
     }
 
     private func buildLiveSession() -> TrackSession {

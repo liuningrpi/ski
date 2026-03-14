@@ -127,6 +127,18 @@ struct LocalizedStrings {
         language == .chinese ? "停止录制" : "Stop Recording"
     }
 
+    var pauseRecording: String {
+        language == .chinese ? "暂停录制" : "Pause Recording"
+    }
+
+    var resumeRecording: String {
+        language == .chinese ? "继续录制" : "Resume Recording"
+    }
+
+    var paused: String {
+        language == .chinese ? "已暂停" : "Paused"
+    }
+
     var recording: String {
         language == .chinese ? "录制中" : "Recording"
     }

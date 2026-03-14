@@ -17,7 +17,7 @@ struct DayGroup: Identifiable {
     }
 
     var totalDescent: Double {
-        sessions.reduce(0) { $0 + $1.elevationDrop }
+        sessions.reduce(0) { $0 + $1.totalVerticalDrop }
     }
 
     var maxSpeed: Double {

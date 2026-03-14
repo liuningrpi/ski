@@ -63,9 +63,29 @@ struct RunSegment: Codable, Identifiable {
     }
 
     var maxSpeedKmh: Double {
-        let validSpeeds = points.map { $0.speed }.filter { $0 >= 0 && $0.isFinite && $0 <= 60 }
-        guard let maxMs = validSpeeds.max() else { return 0 }
-        return maxMs * 3.6
+        let sensorMax = points
+            .map { $0.speed }
+            .filter { $0 >= 0 && $0.isFinite && $0 <= 60 }
+            .max() ?? 0
+
+        // Distance/time-derived speed helps recover peaks when CoreLocation speed is conservative.
+        var derivedMax: Double = 0
+        if points.count >= 2 {
+            for i in 1..<points.count {
+                let prev = points[i - 1]
+                let curr = points[i]
+                let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
+                guard dt > 0, dt <= 5 else { continue }
+                let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
+                let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
+                let stepSpeed = currLoc.distance(from: prevLoc) / dt
+                if stepSpeed.isFinite && stepSpeed >= 0 && stepSpeed <= 35 {
+                    derivedMax = max(derivedMax, stepSpeed)
+                }
+            }
+        }
+
+        return max(sensorMax, derivedMax) * 3.6
     }
 
     var avgSpeedKmh: Double {
@@ -79,6 +99,22 @@ struct RunSegment: Codable, Identifiable {
         return maxAlt - minAlt
     }
 
+    /// Cumulative descent on smoothed altitude series (meters).
+    var cumulativeDescent: Double {
+        guard points.count >= 2 else { return 0 }
+        let smoothed = smoothedAltitudes()
+        guard smoothed.count >= 2 else { return 0 }
+
+        var total: Double = 0
+        for i in 1..<smoothed.count {
+            let drop = smoothed[i - 1] - smoothed[i]
+            if drop > 0 {
+                total += drop
+            }
+        }
+        return total
+    }
+
     var startAltitude: Double {
         points.first?.altitude ?? 0
     }
@@ -89,6 +125,20 @@ struct RunSegment: Codable, Identifiable {
 
     var verticalChange: Double {
         endAltitude - startAltitude
+    }
+
+    private func smoothedAltitudes(alpha: Double = 0.35) -> [Double] {
+        guard !points.isEmpty else { return [] }
+        var result: [Double] = []
+        result.reserveCapacity(points.count)
+
+        var ema = points[0].altitude
+        result.append(ema)
+        for point in points.dropFirst() {
+            ema = alpha * point.altitude + (1 - alpha) * ema
+            result.append(ema)
+        }
+        return result
     }
 }
 
@@ -173,7 +223,7 @@ final class RunSegmenter: ObservableObject {
     }
 
     var totalVerticalDrop: Double {
-        segments.filter { $0.type == .skiing }.reduce(0) { $0 + max(0, -$1.verticalChange) }
+        segments.filter { $0.type == .skiing }.reduce(0) { $0 + $1.cumulativeDescent }
     }
 
     // MARK: - Public Methods

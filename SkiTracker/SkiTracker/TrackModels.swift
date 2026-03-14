@@ -93,7 +93,7 @@ struct TrackSession: Codable, Identifiable {
 
     /// Total vertical drop from skiing segments only
     var totalVerticalDrop: Double {
-        segments.filter { $0.type == .skiing }.reduce(0) { $0 + max(0, -$1.verticalChange) }
+        segments.filter { $0.type == .skiing }.reduce(0) { $0 + $1.cumulativeDescent }
     }
 
     /// Skiing runs only
@@ -157,11 +157,28 @@ struct TrackSession: Codable, Identifiable {
 
     /// Maximum speed in km/h (only valid speed values, filter > 60 m/s ≈ 216 km/h)
     var maxSpeedKmh: Double {
-        let validSpeeds = points
+        let sensorMax = points
             .map { $0.speed }
             .filter { $0 >= 0 && $0.isFinite && $0 <= 60 }
-        guard let maxMs = validSpeeds.max() else { return 0 }
-        return maxMs * 3.6
+            .max() ?? 0
+
+        var derivedMax: Double = 0
+        if points.count >= 2 {
+            for i in 1..<points.count {
+                let prev = points[i - 1]
+                let curr = points[i]
+                let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
+                guard dt > 0, dt <= 5 else { continue }
+                let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
+                let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
+                let stepSpeed = currLoc.distance(from: prevLoc) / dt
+                if stepSpeed.isFinite && stepSpeed >= 0 && stepSpeed <= 35 {
+                    derivedMax = max(derivedMax, stepSpeed)
+                }
+            }
+        }
+
+        return max(sensorMax, derivedMax) * 3.6
     }
 
     /// Average speed in km/h

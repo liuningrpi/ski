@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import UIKit
 
 private func segmentStyle(for state: SkiingState) -> TrackMapView.SegmentStyle {
     switch state {
@@ -32,6 +33,96 @@ private func mapSegments(for run: RunSegment) -> [TrackMapView.Segment] {
 
 private func mapSegments(for dayGroup: DayGroup) -> [TrackMapView.Segment] {
     dayGroup.sessions.flatMap { mapSegments(for: $0) }
+}
+
+private func downhillPlaybackPoints(from points: [TrackPoint]) -> [TrackPoint] {
+    guard points.count >= 2 else { return points }
+    guard let highest = points.enumerated().max(by: { $0.element.altitude < $1.element.altitude }),
+          let lowestAfterHighest = points[highest.offset...].enumerated().min(by: { $0.element.altitude < $1.element.altitude }) else {
+        return points
+    }
+    let endIndex = highest.offset + lowestAfterHighest.offset
+    if endIndex > highest.offset {
+        return Array(points[highest.offset...endIndex])
+    }
+    return points
+}
+
+private func heatmapColorForSpeedMps(_ speedMps: Double) -> UIColor {
+    // Cold -> hot palette: blue -> cyan -> green -> yellow -> orange -> red.
+    let stops: [(speed: Double, color: UIColor)] = [
+        (0.0, UIColor(red: 0.10, green: 0.35, blue: 0.95, alpha: 1)),
+        (3.5, UIColor(red: 0.10, green: 0.75, blue: 0.95, alpha: 1)),
+        (7.0, UIColor(red: 0.15, green: 0.85, blue: 0.35, alpha: 1)),
+        (11.0, UIColor(red: 0.95, green: 0.85, blue: 0.10, alpha: 1)),
+        (15.0, UIColor(red: 0.98, green: 0.52, blue: 0.10, alpha: 1)),
+        (20.0, UIColor(red: 0.92, green: 0.14, blue: 0.12, alpha: 1))
+    ]
+
+    let clamped = min(max(speedMps, stops.first?.speed ?? 0), stops.last?.speed ?? 20)
+    for idx in 1..<stops.count {
+        let lhs = stops[idx - 1]
+        let rhs = stops[idx]
+        if clamped <= rhs.speed {
+            let t = (clamped - lhs.speed) / max(0.001, (rhs.speed - lhs.speed))
+            var lr: CGFloat = 0, lg: CGFloat = 0, lb: CGFloat = 0, la: CGFloat = 0
+            var rr: CGFloat = 0, rg: CGFloat = 0, rb: CGFloat = 0, ra: CGFloat = 0
+            lhs.color.getRed(&lr, green: &lg, blue: &lb, alpha: &la)
+            rhs.color.getRed(&rr, green: &rg, blue: &rb, alpha: &ra)
+            return UIColor(
+                red: lr + (rr - lr) * t,
+                green: lg + (rg - lg) * t,
+                blue: lb + (rb - lb) * t,
+                alpha: la + (ra - la) * t
+            )
+        }
+    }
+    return stops.last?.color ?? .systemRed
+}
+
+private func speedHeatmapSegments(from points: [TrackPoint], lineWidth: CGFloat = 5.0) -> [TrackMapView.Segment] {
+    guard points.count >= 2 else { return [] }
+
+    var rawSpeeds = Array(repeating: 0.0, count: points.count - 1)
+    for idx in 1..<points.count {
+        let prev = points[idx - 1]
+        let curr = points[idx]
+        if curr.speed >= 0 {
+            rawSpeeds[idx - 1] = curr.speed
+            continue
+        }
+        let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
+        guard dt > 0 else {
+            rawSpeeds[idx - 1] = 0
+            continue
+        }
+        let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
+        let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
+        rawSpeeds[idx - 1] = currLoc.distance(from: prevLoc) / dt
+    }
+
+    // EMA smoothing so color transition is natural.
+    var smoothSpeeds = rawSpeeds
+    let alpha = 0.25
+    for idx in 1..<smoothSpeeds.count {
+        smoothSpeeds[idx] = alpha * rawSpeeds[idx] + (1 - alpha) * smoothSpeeds[idx - 1]
+    }
+
+    var segments: [TrackMapView.Segment] = []
+    for idx in 1..<points.count {
+        let prev = points[idx - 1]
+        let curr = points[idx]
+        segments.append(
+            TrackMapView.Segment(
+                coordinates: [prev.coordinate, curr.coordinate],
+                style: .skiing,
+                colorOverride: heatmapColorForSpeedMps(smoothSpeeds[idx - 1]),
+                lineWidthOverride: lineWidth,
+                drawPriorityOverride: 1
+            )
+        )
+    }
+    return segments
 }
 
 private struct TrackSegmentLegend: View {
@@ -94,9 +185,14 @@ struct DayGroup: Identifiable {
     }
 
     var avgSpeed: Double {
-        guard totalDuration > 0 else { return 0 }
-        let totalDistanceM = sessions.reduce(0) { $0 + $1.totalDistanceMeters }
-        return (totalDistanceM / totalDuration) * 3.6
+        let runs = sessions.flatMap { $0.skiingRuns }.filter { $0.durationSeconds > 0 }
+        guard !runs.isEmpty else { return 0 }
+        let weightedSpeed = runs.reduce(0.0) { partial, run in
+            partial + (run.avgSpeedKmh * run.durationSeconds)
+        }
+        let totalRunDuration = runs.reduce(0.0) { $0 + $1.durationSeconds }
+        guard totalRunDuration > 0 else { return 0 }
+        return weightedSpeed / totalRunDuration
     }
 
     var maxDescentRun: Double {
@@ -338,7 +434,11 @@ struct DaySummaryView: View {
 
     @EnvironmentObject var sessionStore: SessionStore
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject var authService = AuthService.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var dayPlaybackProgress = 0.0
+    @State private var isDayPlaybackRunning = false
+    @State private var dayPlaybackTimer: Timer?
 
     // Extract all skiing runs from all sessions in this day
     private var allRuns: [RunWithSession] {
@@ -376,18 +476,22 @@ struct DaySummaryView: View {
                     }
                     .padding(.top, 8)
 
-                    let daySegments = mapSegments(for: dayGroup)
+                    let daySegments = dayHeatmapSegments
                     if !daySegments.isEmpty {
-                        let hasLift = daySegments.contains { $0.style == .lift }
                         TrackMapView(
                             segments: daySegments,
                             followUser: false,
-                            showEndMarker: true
+                            showEndMarker: false,
+                            playbackCoordinate: dayPlaybackCurrentPoint?.coordinate,
+                            playbackInitials: playbackUserInitials,
+                            playbackPhotoURL: playbackUserPhotoURL
                         )
                         .frame(height: 250)
                         .cornerRadius(12)
                         .padding(.horizontal)
-                        TrackSegmentLegend(showSkiing: true, showLift: hasLift)
+
+                        dayPlaybackControlCard
+                            .padding(.horizontal)
                     }
 
                     HStack(spacing: 20) {
@@ -537,6 +641,9 @@ struct DaySummaryView: View {
                 }
             }
         }
+        .onDisappear {
+            stopDayPlaybackTimer()
+        }
     }
 
     // MARK: - Runs List Section
@@ -636,6 +743,205 @@ struct DaySummaryView: View {
         var session = runWithSession.session
         session.deleteRun(id: runWithSession.run.id)
         sessionStore.update(session)
+    }
+
+    private var dayPlaybackPoints: [TrackPoint] {
+        allRuns
+            .sorted { $0.run.startTime < $1.run.startTime }
+            .flatMap { downhillPlaybackPoints(from: $0.run.points) }
+    }
+
+    private var dayHeatmapSegments: [TrackMapView.Segment] {
+        speedHeatmapSegments(from: dayPlaybackPoints, lineWidth: 5.5)
+    }
+
+    private var dayPlaybackCurrentPoint: TrackPoint? {
+        guard !dayPlaybackPoints.isEmpty else { return nil }
+        let maxIndex = Double(dayPlaybackPoints.count - 1)
+        let clamped = min(max(0, dayPlaybackProgress), maxIndex)
+        return interpolatedDayPlaybackPoint(at: clamped)
+    }
+
+    private var dayPlaybackElapsedTime: TimeInterval {
+        guard !dayPlaybackPoints.isEmpty else { return 0 }
+        let maxIndex = Double(dayPlaybackPoints.count - 1)
+        let clamped = min(max(0, dayPlaybackProgress), maxIndex)
+        let lower = Int(floor(clamped))
+        let upper = Int(ceil(clamped))
+        guard upper < dayPlaybackPoints.count else {
+            return dayPlaybackPoints[lower].timestamp.timeIntervalSince(dayGroup.date)
+        }
+        let t = clamped - Double(lower)
+        let start = dayPlaybackPoints[lower].timestamp.timeIntervalSince(dayGroup.date)
+        let end = dayPlaybackPoints[upper].timestamp.timeIntervalSince(dayGroup.date)
+        return start + (end - start) * t
+    }
+
+    private var dayPlaybackSpeedKmh: Double {
+        guard let point = dayPlaybackCurrentPoint else { return 0 }
+        if point.speed >= 0 {
+            return point.speed * 3.6
+        }
+        guard dayPlaybackPoints.count >= 2 else { return 0 }
+        let idx = min(max(1, Int(round(dayPlaybackProgress))), dayPlaybackPoints.count - 1)
+        let prev = dayPlaybackPoints[idx - 1]
+        let curr = dayPlaybackPoints[idx]
+        let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
+        guard dt > 0 else { return 0 }
+        let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
+        let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
+        return (currLoc.distance(from: prevLoc) / dt) * 3.6
+    }
+
+    private var dayPlaybackAltitudeM: Double {
+        dayPlaybackCurrentPoint?.altitude ?? 0
+    }
+
+    private var playbackUserInitials: String {
+        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? "You"
+        let parts = base
+            .split(whereSeparator: { $0 == " " || $0 == "_" || $0 == "-" || $0 == "." })
+            .filter { !$0.isEmpty }
+        if parts.count >= 2 {
+            return String(parts.prefix(2).compactMap { $0.first }).uppercased()
+        }
+        if let first = parts.first?.first {
+            return String(first).uppercased()
+        }
+        return "U"
+    }
+
+    private var playbackUserPhotoURL: URL? {
+        guard let raw = authService.currentUser?.photoURL, let url = URL(string: raw) else {
+            return nil
+        }
+        return url
+    }
+
+    @ViewBuilder
+    private var dayPlaybackControlCard: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        VStack(spacing: 10) {
+            HStack {
+                Text(strings.dayPlayback)
+                    .font(.headline)
+                Spacer()
+                Button {
+                    if isDayPlaybackRunning {
+                        stopDayPlaybackTimer()
+                    } else {
+                        startDayPlayback()
+                    }
+                } label: {
+                    Label(isDayPlaybackRunning ? strings.pause : strings.play, systemImage: isDayPlaybackRunning ? "pause.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    resetDayPlayback()
+                } label: {
+                    Label(strings.reset, systemImage: "gobackward")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            HStack {
+                Label(formattedElapsed(dayPlaybackElapsedTime), systemImage: "clock")
+                Spacer()
+                Label("\(settings.formatSpeed(dayPlaybackSpeedKmh)) \(units.speedUnit)", systemImage: "speedometer")
+                Spacer()
+                Label("\(settings.formatAltitude(dayPlaybackAltitudeM)) \(units.altitudeUnit)", systemImage: "mountain.2.fill")
+            }
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+
+            if dayPlaybackPoints.count > 1 {
+                Slider(
+                    value: Binding(
+                        get: { dayPlaybackProgress },
+                        set: { dayPlaybackProgress = $0 }
+                    ),
+                    in: 0...Double(dayPlaybackPoints.count - 1)
+                )
+                .tint(.blue)
+            } else {
+                Text(strings.noTrackData)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+
+    private func startDayPlayback() {
+        guard dayPlaybackPoints.count > 1 else { return }
+        let maxProgress = Double(dayPlaybackPoints.count - 1)
+        if dayPlaybackProgress >= maxProgress {
+            dayPlaybackProgress = 0
+        }
+        stopDayPlaybackTimer()
+        isDayPlaybackRunning = true
+        let tick = 1.0 / 30.0
+        let targetDuration = min(30.0, max(10.0, Double(dayPlaybackPoints.count) * 0.05))
+        let progressStep = maxProgress * (tick / targetDuration)
+        dayPlaybackTimer = Timer.scheduledTimer(withTimeInterval: tick, repeats: true) { _ in
+            if dayPlaybackProgress < maxProgress {
+                dayPlaybackProgress = min(maxProgress, dayPlaybackProgress + progressStep)
+            } else {
+                stopDayPlaybackTimer()
+            }
+        }
+    }
+
+    private func resetDayPlayback() {
+        stopDayPlaybackTimer()
+        dayPlaybackProgress = 0
+    }
+
+    private func stopDayPlaybackTimer() {
+        dayPlaybackTimer?.invalidate()
+        dayPlaybackTimer = nil
+        isDayPlaybackRunning = false
+    }
+
+    private func interpolatedDayPlaybackPoint(at progress: Double) -> TrackPoint? {
+        guard !dayPlaybackPoints.isEmpty else { return nil }
+        let maxIndex = Double(dayPlaybackPoints.count - 1)
+        let clamped = min(max(0, progress), maxIndex)
+        let lower = Int(floor(clamped))
+        let upper = Int(ceil(clamped))
+        guard upper < dayPlaybackPoints.count, lower != upper else {
+            return dayPlaybackPoints[lower]
+        }
+
+        let from = dayPlaybackPoints[lower]
+        let to = dayPlaybackPoints[upper]
+        let t = clamped - Double(lower)
+        func lerp(_ a: Double, _ b: Double) -> Double { a + (b - a) * t }
+        let fromTs = from.timestamp.timeIntervalSince1970
+        let toTs = to.timestamp.timeIntervalSince1970
+
+        return TrackPoint(
+            latitude: lerp(from.latitude, to.latitude),
+            longitude: lerp(from.longitude, to.longitude),
+            altitude: lerp(from.altitude, to.altitude),
+            horizontalAccuracy: lerp(from.horizontalAccuracy, to.horizontalAccuracy),
+            verticalAccuracy: lerp(from.verticalAccuracy, to.verticalAccuracy),
+            speed: from.speed >= 0 ? lerp(from.speed, to.speed) : -1,
+            course: from.course >= 0 ? lerp(from.course, to.course) : -1,
+            timestamp: Date(timeIntervalSince1970: lerp(fromTs, toTs))
+        )
+    }
+
+    private func formattedElapsed(_ interval: TimeInterval) -> String {
+        let clamped = max(0, Int(interval.rounded()))
+        let minutes = clamped / 60
+        let seconds = clamped % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 
@@ -1069,10 +1375,14 @@ struct RunDetailView: View {
     let onDelete: () -> Void
 
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject var authService = AuthService.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var showDeleteConfirm = false
     @State private var heartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+    @State private var playbackProgress = 0.0
+    @State private var isPlaybackRunning = false
+    @State private var playbackTimer: Timer?
 
     var body: some View {
         let strings = settings.strings
@@ -1081,19 +1391,23 @@ struct RunDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    let runSegments = mapSegments(for: run)
+                    let runSegments = heatmapSegmentsForPlayback
                     if !runSegments.isEmpty {
-                        let hasLift = runSegments.contains { $0.style == .lift }
                         TrackMapView(
                             segments: runSegments,
                             followUser: false,
-                            showEndMarker: true
+                            showEndMarker: false,
+                            playbackCoordinate: playbackCoordinate,
+                            playbackInitials: playbackUserInitials,
+                            playbackPhotoURL: playbackUserPhotoURL
                         )
                         .frame(height: 280)
                         .cornerRadius(12)
                         .padding(.horizontal)
-                        TrackSegmentLegend(showSkiing: true, showLift: hasLift)
                     }
+
+                    playbackControlCard
+                        .padding(.horizontal)
 
                     RunMetricCard(
                         icon: "timer",
@@ -1173,7 +1487,11 @@ struct RunDetailView: View {
             Text(strings.deleteRunConfirmMessage)
         }
         .task(id: run.id) {
+            playbackProgress = 0
             await loadHeartRate()
+        }
+        .onDisappear {
+            stopPlaybackTimer()
         }
     }
 
@@ -1197,17 +1515,230 @@ struct RunDetailView: View {
     }
 
     private var runTimeWindow: String {
-        var text = "\(formattedTime(run.startTime))"
+        var text = "\(formattedClockTime(run.startTime))"
         if let end = run.endTime {
-            text += " - \(formattedTime(end))"
+            text += " - \(formattedClockTime(end))"
         }
         return text
     }
 
-    private func formattedTime(_ date: Date) -> String {
+    private var playbackTrackPoints: [TrackPoint] {
+        downhillPlaybackPoints(from: run.points)
+    }
+
+    private var playbackCurrentPoint: TrackPoint? {
+        guard !playbackTrackPoints.isEmpty else { return nil }
+        let maxIndex = Double(playbackTrackPoints.count - 1)
+        let clamped = min(max(0, playbackProgress), maxIndex)
+        return interpolatedPlaybackPoint(at: clamped)
+    }
+
+    @ViewBuilder
+    private var playbackControlCard: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        VStack(spacing: 10) {
+            HStack {
+                Text(strings.runPlayback)
+                    .font(.headline)
+                Spacer()
+                Button {
+                    if isPlaybackRunning {
+                        stopPlaybackTimer()
+                    } else {
+                        startPlayback()
+                    }
+                } label: {
+                    Label(
+                        isPlaybackRunning ? strings.pause : strings.play,
+                        systemImage: isPlaybackRunning ? "pause.fill" : "play.fill"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    resetPlayback()
+                } label: {
+                    Label(strings.reset, systemImage: "gobackward")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            HStack {
+                Label(playbackTimeText, systemImage: "clock")
+                Spacer()
+                Label("\(settings.formatSpeed(playbackSpeedKmh)) \(units.speedUnit)", systemImage: "speedometer")
+                Spacer()
+                Label("\(settings.formatAltitude(playbackAltitudeM)) \(units.altitudeUnit)", systemImage: "mountain.2.fill")
+            }
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+
+            if playbackTrackPoints.count > 1 {
+                Slider(
+                    value: Binding(
+                        get: { playbackProgress },
+                        set: { playbackProgress = $0 }
+                    ),
+                    in: 0...Double(playbackTrackPoints.count - 1)
+                )
+                .tint(.blue)
+            } else {
+                Text(strings.noTrackData)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+
+    private var playbackTimeText: String {
+        return formattedElapsed(playbackElapsedTime)
+    }
+
+    private var playbackAltitudeM: Double {
+        playbackCurrentPoint?.altitude ?? 0
+    }
+
+    private var playbackSpeedKmh: Double {
+        guard let point = playbackCurrentPoint else { return 0 }
+        if point.speed >= 0 {
+            return point.speed * 3.6
+        }
+        return derivedPlaybackSpeedKmh()
+    }
+
+    private var playbackCoordinate: CLLocationCoordinate2D? {
+        playbackCurrentPoint?.coordinate
+    }
+
+    private var playbackElapsedTime: TimeInterval {
+        guard !playbackTrackPoints.isEmpty else { return 0 }
+        let maxIndex = Double(playbackTrackPoints.count - 1)
+        let clamped = min(max(0, playbackProgress), maxIndex)
+        let lower = Int(floor(clamped))
+        let upper = Int(ceil(clamped))
+        guard upper < playbackTrackPoints.count else {
+            return playbackTrackPoints[lower].timestamp.timeIntervalSince(run.startTime)
+        }
+        let t = clamped - Double(lower)
+        let start = playbackTrackPoints[lower].timestamp.timeIntervalSince(run.startTime)
+        let end = playbackTrackPoints[upper].timestamp.timeIntervalSince(run.startTime)
+        return start + (end - start) * t
+    }
+
+    private var playbackUserInitials: String {
+        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? "You"
+        let parts = base
+            .split(whereSeparator: { $0 == " " || $0 == "_" || $0 == "-" || $0 == "." })
+            .filter { !$0.isEmpty }
+        if parts.count >= 2 {
+            return String(parts.prefix(2).compactMap { $0.first }).uppercased()
+        }
+        if let first = parts.first?.first {
+            return String(first).uppercased()
+        }
+        return "U"
+    }
+
+    private var playbackUserPhotoURL: URL? {
+        guard let raw = authService.currentUser?.photoURL, let url = URL(string: raw) else {
+            return nil
+        }
+        return url
+    }
+
+    private func derivedPlaybackSpeedKmh() -> Double {
+        guard playbackTrackPoints.count >= 2 else { return 0 }
+        let idx = min(max(1, Int(round(playbackProgress))), playbackTrackPoints.count - 1)
+        let prev = playbackTrackPoints[idx - 1]
+        let curr = playbackTrackPoints[idx]
+        let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
+        guard dt > 0 else { return 0 }
+        let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
+        let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
+        return (currLoc.distance(from: prevLoc) / dt) * 3.6
+    }
+
+    private func startPlayback() {
+        guard playbackTrackPoints.count > 1 else { return }
+        let maxProgress = Double(playbackTrackPoints.count - 1)
+        if playbackProgress >= maxProgress {
+            playbackProgress = 0
+        }
+        stopPlaybackTimer()
+        isPlaybackRunning = true
+        let tick = 1.0 / 30.0
+        let targetDuration = min(18.0, max(6.0, Double(playbackTrackPoints.count) * 0.07))
+        let progressStep = maxProgress * (tick / targetDuration)
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: tick, repeats: true) { _ in
+            if playbackProgress < maxProgress {
+                playbackProgress = min(maxProgress, playbackProgress + progressStep)
+            } else {
+                stopPlaybackTimer()
+            }
+        }
+    }
+
+    private func resetPlayback() {
+        stopPlaybackTimer()
+        playbackProgress = 0
+    }
+
+    private func stopPlaybackTimer() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        isPlaybackRunning = false
+    }
+
+    private func formattedElapsed(_ interval: TimeInterval) -> String {
+        let clamped = max(0, Int(interval.rounded()))
+        let minutes = clamped / 60
+        let seconds = clamped % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func formattedClockTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private var heatmapSegmentsForPlayback: [TrackMapView.Segment] {
+        speedHeatmapSegments(from: playbackTrackPoints, lineWidth: 5)
+    }
+
+    private func interpolatedPlaybackPoint(at progress: Double) -> TrackPoint? {
+        guard !playbackTrackPoints.isEmpty else { return nil }
+        let maxIndex = Double(playbackTrackPoints.count - 1)
+        let clamped = min(max(0, progress), maxIndex)
+        let lower = Int(floor(clamped))
+        let upper = Int(ceil(clamped))
+        guard upper < playbackTrackPoints.count, lower != upper else {
+            return playbackTrackPoints[lower]
+        }
+
+        let from = playbackTrackPoints[lower]
+        let to = playbackTrackPoints[upper]
+        let t = clamped - Double(lower)
+
+        func lerp(_ a: Double, _ b: Double) -> Double { a + (b - a) * t }
+        let fromTs = from.timestamp.timeIntervalSince1970
+        let toTs = to.timestamp.timeIntervalSince1970
+
+        return TrackPoint(
+            latitude: lerp(from.latitude, to.latitude),
+            longitude: lerp(from.longitude, to.longitude),
+            altitude: lerp(from.altitude, to.altitude),
+            horizontalAccuracy: lerp(from.horizontalAccuracy, to.horizontalAccuracy),
+            verticalAccuracy: lerp(from.verticalAccuracy, to.verticalAccuracy),
+            speed: from.speed >= 0 ? lerp(from.speed, to.speed) : -1,
+            course: from.course >= 0 ? lerp(from.course, to.course) : -1,
+            timestamp: Date(timeIntervalSince1970: lerp(fromTs, toTs))
+        )
     }
 }
 

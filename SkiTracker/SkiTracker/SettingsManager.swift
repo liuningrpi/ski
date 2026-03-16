@@ -418,6 +418,30 @@ struct LocalizedStrings {
         language == .chinese ? "单趟详情" : "Run Details"
     }
 
+    var runPlayback: String {
+        language == .chinese ? "滑行回放" : "Run Playback"
+    }
+
+    var dayPlayback: String {
+        language == .chinese ? "全天回放" : "Day Playback"
+    }
+
+    var play: String {
+        language == .chinese ? "播放" : "Play"
+    }
+
+    var pause: String {
+        language == .chinese ? "暂停" : "Pause"
+    }
+
+    var reset: String {
+        language == .chinese ? "重置" : "Reset"
+    }
+
+    var noTrackData: String {
+        language == .chinese ? "暂无轨迹数据" : "No track data"
+    }
+
     var segmentType: String {
         language == .chinese ? "类型" : "Type"
     }

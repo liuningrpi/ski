@@ -182,12 +182,12 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Dynamic distance filter based on speed (power saving)
     private func adjustDistanceFilter(for speed: Double) {
         if speed < 1.0 {
-            locationManager.distanceFilter = 3.0
+            locationManager.distanceFilter = 2.0
         } else if speed < 5.0 {
-            locationManager.distanceFilter = 5.0
+            locationManager.distanceFilter = 3.0
         } else {
-            // High speed skiing.
-            locationManager.distanceFilter = 8.0
+            // High speed skiing: keep denser sampling for curved turns.
+            locationManager.distanceFilter = 4.0
         }
     }
 }

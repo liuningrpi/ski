@@ -136,18 +136,7 @@ struct TrackSession: Codable, Identifiable {
 
     /// Total distance in meters, with teleport filtering (skip single-step > 100m)
     var totalDistanceMeters: Double {
-        guard points.count >= 2 else { return 0 }
-        var total: Double = 0
-        for i in 1..<points.count {
-            let prev = CLLocation(latitude: points[i-1].latitude, longitude: points[i-1].longitude)
-            let curr = CLLocation(latitude: points[i].latitude, longitude: points[i].longitude)
-            let step = curr.distance(from: prev)
-            // Filter teleportation: skip single step > 100m
-            if step <= 100 {
-                total += step
-            }
-        }
-        return total
+        SkiMetrics.totalDistanceMeters(points: points)
     }
 
     /// Total distance in kilometers
@@ -157,34 +146,12 @@ struct TrackSession: Codable, Identifiable {
 
     /// Maximum speed in km/h (only valid speed values, filter > 60 m/s ≈ 216 km/h)
     var maxSpeedKmh: Double {
-        let sensorMax = points
-            .map { $0.speed }
-            .filter { $0 >= 0 && $0.isFinite && $0 <= 60 }
-            .max() ?? 0
-
-        var derivedMax: Double = 0
-        if points.count >= 2 {
-            for i in 1..<points.count {
-                let prev = points[i - 1]
-                let curr = points[i]
-                let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
-                guard dt > 0, dt <= 5 else { continue }
-                let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
-                let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
-                let stepSpeed = currLoc.distance(from: prevLoc) / dt
-                if stepSpeed.isFinite && stepSpeed >= 0 && stepSpeed <= 35 {
-                    derivedMax = max(derivedMax, stepSpeed)
-                }
-            }
-        }
-
-        return max(sensorMax, derivedMax) * 3.6
+        SkiMetrics.peakSpeedKmh(points: points)
     }
 
     /// Average speed in km/h
     var avgSpeedKmh: Double {
-        guard durationSeconds > 0 else { return 0 }
-        return (totalDistanceMeters / durationSeconds) * 3.6
+        SkiMetrics.averageSpeedKmh(points: points)
     }
 
     /// Maximum altitude in meters

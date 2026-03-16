@@ -45,17 +45,7 @@ struct RunSegment: Codable, Identifiable {
     }
 
     var totalDistanceMeters: Double {
-        guard points.count >= 2 else { return 0 }
-        var total: Double = 0
-        for i in 1..<points.count {
-            let prev = CLLocation(latitude: points[i-1].latitude, longitude: points[i-1].longitude)
-            let curr = CLLocation(latitude: points[i].latitude, longitude: points[i].longitude)
-            let step = curr.distance(from: prev)
-            if step <= 100 { // Filter teleportation
-                total += step
-            }
-        }
-        return total
+        SkiMetrics.totalDistanceMeters(points: points)
     }
 
     var totalDistanceKm: Double {
@@ -63,34 +53,11 @@ struct RunSegment: Codable, Identifiable {
     }
 
     var maxSpeedKmh: Double {
-        let sensorMax = points
-            .map { $0.speed }
-            .filter { $0 >= 0 && $0.isFinite && $0 <= 60 }
-            .max() ?? 0
-
-        // Distance/time-derived speed helps recover peaks when CoreLocation speed is conservative.
-        var derivedMax: Double = 0
-        if points.count >= 2 {
-            for i in 1..<points.count {
-                let prev = points[i - 1]
-                let curr = points[i]
-                let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
-                guard dt > 0, dt <= 5 else { continue }
-                let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
-                let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
-                let stepSpeed = currLoc.distance(from: prevLoc) / dt
-                if stepSpeed.isFinite && stepSpeed >= 0 && stepSpeed <= 35 {
-                    derivedMax = max(derivedMax, stepSpeed)
-                }
-            }
-        }
-
-        return max(sensorMax, derivedMax) * 3.6
+        SkiMetrics.peakSpeedKmh(points: points)
     }
 
     var avgSpeedKmh: Double {
-        guard durationSeconds > 0 else { return 0 }
-        return (totalDistanceMeters / durationSeconds) * 3.6
+        SkiMetrics.averageSpeedKmh(points: points)
     }
 
     var elevationDrop: Double {
@@ -171,6 +138,7 @@ final class RunSegmenter: ObservableObject {
         // Altitude change rate thresholds (m/s)
         var skiingDescentRate: Double = -0.25   // Descending
         var liftAscentRate: Double = 0.18       // Ascending
+        var liftStopHoldAscentFloor: Double = -0.08 // Treat near-flat slope as lift while already on lift
 
         // Time windows (seconds)
         var windowSize: Int = 8
@@ -185,6 +153,10 @@ final class RunSegmenter: ObservableObject {
         // Require a clear downhill move before starting a new run.
         // 5.0 m ~= 16.4 ft
         var minRunStartDropMeters: Double = 5.0
+
+        // Merge adjacent skiing segments if they are split by a short non-lift interruption.
+        var maxRunMergeGapSeconds: Double = 45.0
+        var maxRunMergeInterruptionAscentMeters: Double = 4.0
 
         // Accuracy filter
         var maxAcceptableAccuracy: Double = 35.0
@@ -346,16 +318,24 @@ final class RunSegmenter: ObservableObject {
         var stoppedVotes = 0
 
         for sample in sampleWindow {
-            // Skiing: descending OR moving fast enough
-            if sample.speed > config.skiingMinSpeed ||
-               sample.altitudeChangeRate < config.skiingDescentRate {
-                skiingVotes += 1
+            let isAscending = sample.altitudeChangeRate > config.liftAscentRate
+
+            // Ascending segments should strongly favor lift, even when horizontal speed is high.
+            if isAscending && sample.speed <= config.liftMaxSpeed {
+                liftVotes += 1
             }
 
-            // Lift: ascending, optionally with low/moderate speed
-            if sample.altitudeChangeRate > config.liftAscentRate &&
-                sample.speed <= config.liftMaxSpeed {
+            // If already on lift, temporary stop/slow queue should remain part of lift.
+            if currentState == .lift,
+               sample.speed <= config.stoppedMaxSpeed,
+               sample.altitudeChangeRate >= config.liftStopHoldAscentFloor {
                 liftVotes += 1
+            }
+
+            // Skiing: descending OR moving fast enough
+            if !isAscending && (sample.speed > config.skiingMinSpeed ||
+               sample.altitudeChangeRate < config.skiingDescentRate) {
+                skiingVotes += 1
             }
 
             // Stopped: very slow
@@ -368,6 +348,13 @@ final class RunSegmenter: ObservableObject {
         let skiingRatio = Double(skiingVotes) / total
         let liftRatio = Double(liftVotes) / total
         let stoppedRatio = Double(stoppedVotes) / total
+
+        // Keep lift continuity during temporary stalls/queues.
+        if currentState == .lift,
+           skiingRatio < config.voteThreshold,
+           avgAltRate >= config.liftStopHoldAscentFloor {
+            return .lift
+        }
 
         // Determine state by vote threshold
         if skiingRatio >= config.voteThreshold {
@@ -405,19 +392,7 @@ final class RunSegmenter: ObservableObject {
         // End current segment
         if var segment = currentSegment {
             segment.endTime = time
-
-            // Only save skiing segments that meet minimum duration
-            if segment.type == .skiing {
-                if segment.durationSeconds >= config.minRunDuration {
-                    segments.append(segment)
-                    DispatchQueue.main.async {
-                        self.onSegmentCompleted?(segment)
-                    }
-                    LoggingService.shared.logRunCompleted(run: segment)
-                }
-            } else {
-                segments.append(segment)
-            }
+            persistCompletedSegment(segment, forceIncludeCurrentSkiing: false)
         }
 
         // Start new segment
@@ -436,23 +411,77 @@ final class RunSegmenter: ObservableObject {
     func finalizeCurrentSegment(forceIncludeCurrentSkiing: Bool = false) {
         if var segment = currentSegment {
             segment.endTime = Date()
-
-            if segment.type == .skiing {
-                let shouldSave = forceIncludeCurrentSkiing
-                    ? segment.points.count > 1
-                    : segment.durationSeconds >= config.minRunDuration
-                if shouldSave {
-                    segments.append(segment)
-                    DispatchQueue.main.async {
-                        self.onSegmentCompleted?(segment)
-                    }
-                }
-            } else if segment.points.count > 0 {
-                segments.append(segment)
-            }
+            persistCompletedSegment(segment, forceIncludeCurrentSkiing: forceIncludeCurrentSkiing)
 
             currentSegment = nil
         }
+    }
+
+    private func persistCompletedSegment(_ segment: RunSegment, forceIncludeCurrentSkiing: Bool) {
+        if segment.type == .skiing {
+            let shouldSave = forceIncludeCurrentSkiing
+                ? segment.points.count > 1
+                : segment.durationSeconds >= config.minRunDuration
+            guard shouldSave else { return }
+
+            if mergeIntoPreviousSkiingIfNeeded(segment) {
+                return
+            }
+
+            segments.append(segment)
+            DispatchQueue.main.async {
+                self.onSegmentCompleted?(segment)
+            }
+            LoggingService.shared.logRunCompleted(run: segment)
+            return
+        }
+
+        if segment.points.count > 0 {
+            segments.append(segment)
+        }
+    }
+
+    private func mergeIntoPreviousSkiingIfNeeded(_ newSkiingSegment: RunSegment) -> Bool {
+        guard !segments.isEmpty else { return false }
+
+        var idx = segments.count - 1
+        var interruption: [RunSegment] = []
+
+        while idx >= 0, segments[idx].type != .skiing {
+            interruption.insert(segments[idx], at: 0)
+            if idx == 0 { break }
+            idx -= 1
+        }
+
+        guard idx >= 0, segments[idx].type == .skiing else { return false }
+        let previousSkiing = segments[idx]
+
+        if interruption.contains(where: { $0.type == .lift }) {
+            return false
+        }
+
+        let interruptionDuration = interruption.reduce(0.0) { $0 + $1.durationSeconds }
+        if interruptionDuration > config.maxRunMergeGapSeconds {
+            return false
+        }
+
+        let interruptionPoints = interruption.flatMap { $0.points }
+        if let firstAlt = interruptionPoints.first?.altitude,
+           let maxAlt = interruptionPoints.map(\.altitude).max(),
+           (maxAlt - firstAlt) > config.maxRunMergeInterruptionAscentMeters {
+            return false
+        }
+
+        var merged = previousSkiing
+        merged.endTime = newSkiingSegment.endTime
+        var mergedPoints = previousSkiing.points
+        mergedPoints.append(contentsOf: interruptionPoints)
+        mergedPoints.append(contentsOf: newSkiingSegment.points)
+        merged.points = mergedPoints
+
+        segments.removeSubrange(idx..<segments.count)
+        segments.append(merged)
+        return true
     }
 
     // MARK: - Get Skiing Runs Only

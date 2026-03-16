@@ -325,8 +325,6 @@ struct DaySummaryView: View {
     @ObservedObject var settings = SettingsManager.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedRunWithSession: RunWithSession?
-
     // Extract all skiing runs from all sessions in this day
     private var allRuns: [RunWithSession] {
         var runs: [RunWithSession] = []
@@ -488,16 +486,6 @@ struct DaySummaryView: View {
                     }
                 }
             }
-            .sheet(item: $selectedRunWithSession) { runWithSession in
-                RunDetailView(
-                    run: runWithSession.run,
-                    runIndex: runWithSession.runIndex,
-                    onDelete: {
-                        selectedRunWithSession = nil
-                        deleteRun(runWithSession)
-                    }
-                )
-            }
         }
     }
 
@@ -516,73 +504,82 @@ struct DaySummaryView: View {
             ForEach(allRuns) { runWithSession in
                 let run = runWithSession.run
 
-                Button {
-                    selectedRunWithSession = runWithSession
+                NavigationLink {
+                    RunDetailView(
+                        run: run,
+                        runIndex: runWithSession.runIndex,
+                        onDelete: {
+                            deleteRun(runWithSession)
+                        }
+                    )
                 } label: {
-                    HStack {
-                        // Run number
-                        Text("#\(runWithSession.runIndex)")
-                            .font(.headline)
-                            .foregroundColor(.blue)
-                            .frame(width: 40)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            // Time
-                            HStack {
-                                Text(run.startTime, style: .time)
-                                if let end = run.endTime {
-                                    Text("-")
-                                    Text(end, style: .time)
-                                }
-                            }
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                            // Duration
-                            Text(run.durationFormatted)
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 2) {
-                            // Distance
-                            Text("\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primary)
-
-                            // Max Speed
-                            Text("\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-
-                        // Vertical drop
-                        VStack(alignment: .trailing) {
-                            Text("\(settings.formatAltitude(run.elevationDrop))")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primary)
-                            Text(units.altitudeUnit)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(width: 50)
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(10)
+                    runRow(
+                        number: runWithSession.runIndex,
+                        run: run,
+                        units: units
+                    )
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal)
             }
         }
+    }
+
+    @ViewBuilder
+    private func runRow(number: Int, run: RunSegment, units: UnitSystem) -> some View {
+        HStack {
+            Text("#\(number)")
+                .font(.headline)
+                .foregroundColor(.blue)
+                .frame(width: 40)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(run.startTime, style: .time)
+                    if let end = run.endTime {
+                        Text("-")
+                        Text(end, style: .time)
+                    }
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+                Text(run.durationFormatted)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+
+                Text("\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .trailing) {
+                Text("\(settings.formatAltitude(run.elevationDrop))")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                Text(units.altitudeUnit)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(width: 50)
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(10)
     }
 
     private func deleteRun(_ runWithSession: RunWithSession) {
@@ -641,11 +638,9 @@ struct SessionDetailView: View {
     @ObservedObject var settings = SettingsManager.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var runToDelete: RunSegment?
-    @State private var showDeleteConfirm = false
     @State private var showDeleteSessionConfirm = false
-    @State private var selectedRun: RunSegment?
     @State private var sessionHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+    @State private var singleRunHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
 
     var body: some View {
         let strings = settings.strings
@@ -688,8 +683,10 @@ struct SessionDetailView: View {
                         avgHeartRateBPM: sessionHeartRateStats.avgBPM
                     )
 
-                    // Individual runs (if available)
-                    if !session.skiingRuns.isEmpty {
+                    if session.skiingRuns.count == 1, let run = session.skiingRuns.first {
+                        singleRunDetailsSection(run: run)
+                    } else if !session.skiingRuns.isEmpty {
+                        // Individual runs (if available)
                         runsSection
                     }
 
@@ -697,7 +694,7 @@ struct SessionDetailView: View {
                         .frame(height: 20)
                 }
             }
-            .navigationTitle(strings.history)
+            .navigationTitle(session.skiingRuns.count == 1 ? strings.runDetails : strings.history)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -713,19 +710,6 @@ struct SessionDetailView: View {
                     }
                 }
             }
-            .alert(strings.deleteRunConfirmTitle, isPresented: $showDeleteConfirm) {
-                Button(strings.cancel, role: .cancel) {
-                    runToDelete = nil
-                }
-                Button(strings.delete, role: .destructive) {
-                    if let run = runToDelete {
-                        deleteRun(run)
-                    }
-                    runToDelete = nil
-                }
-            } message: {
-                Text(strings.deleteRunConfirmMessage)
-            }
             .confirmationDialog(strings.deleteConfirmTitle, isPresented: $showDeleteSessionConfirm, titleVisibility: .visible) {
                 Button(strings.delete, role: .destructive) {
                     deleteSession()
@@ -734,18 +718,15 @@ struct SessionDetailView: View {
             } message: {
                 Text(strings.deleteConfirmMessage)
             }
-            .sheet(item: $selectedRun) { run in
-                RunDetailView(
-                    run: run,
-                    runIndex: session.skiingRuns.firstIndex(where: { $0.id == run.id }).map { $0 + 1 } ?? 0,
-                    onDelete: {
-                        selectedRun = nil
-                        deleteRun(run)
-                    }
-                )
-            }
             .task(id: session.id) {
                 await loadSessionHeartRate()
+                if let run = session.skiingRuns.first, session.skiingRuns.count == 1 {
+                    await loadSingleRunHeartRate(run: run)
+                } else {
+                    await MainActor.run {
+                        singleRunHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+                    }
+                }
             }
         }
     }
@@ -771,6 +752,20 @@ struct SessionDetailView: View {
         let stats = await HeartRateService.shared.fetchStats(start: session.startedAt, end: end)
         await MainActor.run {
             sessionHeartRateStats = stats
+        }
+    }
+
+    private func loadSingleRunHeartRate(run: RunSegment) async {
+        guard let end = run.endTime else {
+            await MainActor.run {
+                singleRunHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+            }
+            return
+        }
+
+        let stats = await HeartRateService.shared.fetchStats(start: run.startTime, end: end)
+        await MainActor.run {
+            singleRunHeartRateStats = stats
         }
     }
 
@@ -836,6 +831,76 @@ struct SessionDetailView: View {
         .padding(.horizontal)
     }
 
+    @ViewBuilder
+    private func singleRunDetailsSection(run: RunSegment) -> some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        VStack(spacing: 12) {
+            RunMetricCard(
+                title: "Time",
+                rows: [
+                    ("Run", "#1"),
+                    (strings.duration, run.durationFormatted),
+                    ("Window", runTimeWindow(run))
+                ]
+            )
+
+            RunMetricCard(
+                title: "Distance",
+                rows: [
+                    (strings.distance, "\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)"),
+                    (strings.elevationDrop, "\(settings.formatAltitude(run.elevationDrop)) \(units.altitudeUnit)"),
+                    (strings.trackPoints, "\(run.points.count) \(strings.points)")
+                ]
+            )
+
+            RunMetricCard(
+                title: "Speed",
+                rows: [
+                    (strings.maxSpeed, "\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)"),
+                    (strings.avgSpeed, "\(settings.formatSpeed(run.avgSpeedKmh)) \(units.speedUnit)")
+                ]
+            )
+
+            RunMetricCard(
+                title: "Altitude",
+                rows: [
+                    (strings.startAltitude, "\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)"),
+                    (strings.endAltitude, "\(settings.formatAltitude(run.endAltitude)) \(units.altitudeUnit)")
+                ]
+            )
+
+            RunMetricCard(
+                title: "Heart Rate",
+                rows: [
+                    (strings.maxHeartRate, "\(heartRateValue(singleRunHeartRateStats.maxBPM)) \(strings.heartRateUnit)"),
+                    (strings.avgHeartRate, "\(heartRateValue(singleRunHeartRateStats.avgBPM)) \(strings.heartRateUnit)")
+                ]
+            )
+        }
+        .padding(.horizontal)
+    }
+
+    private func runTimeWindow(_ run: RunSegment) -> String {
+        var text = formattedTime(run.startTime)
+        if let end = run.endTime {
+            text += " - \(formattedTime(end))"
+        }
+        return text
+    }
+
+    private func formattedTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private func heartRateValue(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%.0f", value)
+    }
+
     // MARK: - Runs Section
 
     @ViewBuilder
@@ -849,18 +914,22 @@ struct SessionDetailView: View {
                 .padding(.horizontal)
 
             ForEach(Array(session.skiingRuns.enumerated()), id: \.element.id) { index, run in
-                Button {
-                    selectedRun = run
+                NavigationLink {
+                    RunDetailView(
+                        run: run,
+                        runIndex: index + 1,
+                        onDelete: {
+                            deleteRun(run)
+                        }
+                    )
                 } label: {
                     HStack {
-                        // Run number
                         Text("#\(index + 1)")
                             .font(.headline)
                             .foregroundColor(.blue)
                             .frame(width: 40)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            // Time
                             HStack {
                                 Text(run.startTime, style: .time)
                                 if let end = run.endTime {
@@ -871,7 +940,6 @@ struct SessionDetailView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
 
-                            // Duration
                             Text(run.durationFormatted)
                                 .font(.subheadline)
                                 .foregroundColor(.primary)
@@ -880,19 +948,15 @@ struct SessionDetailView: View {
                         Spacer()
 
                         VStack(alignment: .trailing, spacing: 2) {
-                            // Distance
                             Text("\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.primary)
-
-                            // Max Speed
                             Text("\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
 
-                        // Vertical drop
                         VStack(alignment: .trailing) {
                             Text("\(settings.formatAltitude(run.elevationDrop))")
                                 .font(.subheadline)
@@ -963,60 +1027,9 @@ struct RunDetailView: View {
         let strings = settings.strings
         let units = settings.unitSystem
 
-        VStack(spacing: 0) {
-            // Custom header with Close and Delete buttons
-            HStack {
-                Button(strings.close) {
-                    dismiss()
-                }
-                .foregroundColor(.blue)
-
-                Spacer()
-
-                Text(strings.runDetails)
-                    .font(.headline)
-
-                Spacer()
-
-                Button {
-                    showDeleteConfirm = true
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                }
-            }
-            .padding()
-            .background(Color(.systemBackground))
-
-            Divider()
-
+        NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
-                    // Run header
-                    VStack(spacing: 8) {
-                        HStack {
-                            Image(systemName: "figure.skiing.downhill")
-                                .font(.system(size: 40))
-                                .foregroundColor(.blue)
-                        }
-
-                        Text("Run #\(runIndex)")
-                            .font(.title)
-                            .fontWeight(.bold)
-
-                        HStack {
-                            Text(run.startTime, style: .time)
-                            if let end = run.endTime {
-                                Text("-")
-                                Text(end, style: .time)
-                            }
-                        }
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    }
-                    .padding(.top)
-
-                    // Map with track
+                VStack(spacing: 16) {
                     let runSegments = mapSegments(for: run)
                     if !runSegments.isEmpty {
                         TrackMapView(
@@ -1024,133 +1037,80 @@ struct RunDetailView: View {
                             followUser: false,
                             showEndMarker: true
                         )
-                        .frame(height: 250)
+                        .frame(height: 280)
                         .cornerRadius(12)
                         .padding(.horizontal)
                         TrackSegmentLegend()
                     }
 
-                    // Stats grid
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 12) {
-                        // Duration
-                        RunStatCard(
-                            icon: "timer",
-                            title: strings.duration,
-                            value: run.durationFormatted,
-                            unit: "",
-                            color: .green
-                        )
-
-                        // Distance
-                        RunStatCard(
-                            icon: "point.topleft.down.to.point.bottomright.curvepath",
-                            title: strings.distance,
-                            value: settings.formatDistance(run.totalDistanceKm),
-                            unit: units.distanceUnit,
-                            color: .blue
-                        )
-
-                        // Max Speed
-                        RunStatCard(
-                            icon: "gauge.with.needle.fill",
-                            title: strings.maxSpeed,
-                            value: settings.formatSpeed(run.maxSpeedKmh),
-                            unit: units.speedUnit,
-                            color: .red
-                        )
-
-                        // Avg Speed
-                        RunStatCard(
-                            icon: "speedometer",
-                            title: strings.avgSpeed,
-                            value: settings.formatSpeed(run.avgSpeedKmh),
-                            unit: units.speedUnit,
-                            color: .purple
-                        )
-
-                        // Elevation Drop
-                        RunStatCard(
-                            icon: "arrow.down.right",
-                            title: strings.elevationDrop,
-                            value: settings.formatAltitude(run.elevationDrop),
-                            unit: units.altitudeUnit,
-                            color: .orange
-                        )
-
-                        // Track Points
-                        RunStatCard(
-                            icon: "location.fill",
-                            title: strings.trackPoints,
-                            value: "\(run.points.count)",
-                            unit: strings.points,
-                            color: .gray
-                        )
-
-                        // Max Heart Rate (local only)
-                        RunStatCard(
-                            icon: "heart.fill",
-                            title: strings.maxHeartRate,
-                            value: heartRateValue(heartRateStats.maxBPM),
-                            unit: strings.heartRateUnit,
-                            color: .red
-                        )
-
-                        // Avg Heart Rate (local only)
-                        RunStatCard(
-                            icon: "heart.text.square.fill",
-                            title: strings.avgHeartRate,
-                            value: heartRateValue(heartRateStats.avgBPM),
-                            unit: strings.heartRateUnit,
-                            color: .pink
-                        )
-                    }
+                    RunMetricCard(
+                        title: "Time",
+                        rows: [
+                            ("Run", "#\(runIndex)"),
+                            (strings.duration, run.durationFormatted),
+                            ("Window", runTimeWindow)
+                        ]
+                    )
                     .padding(.horizontal)
 
-                    // Altitude info
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(strings.startAltitude)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)")
-                                .font(.headline)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(.secondary)
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text(strings.endAltitude)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(settings.formatAltitude(run.endAltitude)) \(units.altitudeUnit)")
-                                .font(.headline)
-                        }
-                    }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                    RunMetricCard(
+                        title: "Distance",
+                        rows: [
+                            (strings.distance, "\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)"),
+                            (strings.elevationDrop, "\(settings.formatAltitude(run.elevationDrop)) \(units.altitudeUnit)"),
+                            (strings.trackPoints, "\(run.points.count) \(strings.points)")
+                        ]
+                    )
                     .padding(.horizontal)
 
-                    Spacer()
-                        .frame(height: 30)
+                    RunMetricCard(
+                        title: "Speed",
+                        rows: [
+                            (strings.maxSpeed, "\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)"),
+                            (strings.avgSpeed, "\(settings.formatSpeed(run.avgSpeedKmh)) \(units.speedUnit)")
+                        ]
+                    )
+                    .padding(.horizontal)
+
+                    RunMetricCard(
+                        title: "Altitude",
+                        rows: [
+                            (strings.startAltitude, "\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)"),
+                            (strings.endAltitude, "\(settings.formatAltitude(run.endAltitude)) \(units.altitudeUnit)")
+                        ]
+                    )
+                    .padding(.horizontal)
+
+                    RunMetricCard(
+                        title: "Heart Rate",
+                        rows: [
+                            (strings.maxHeartRate, "\(heartRateValue(heartRateStats.maxBPM)) \(strings.heartRateUnit)"),
+                            (strings.avgHeartRate, "\(heartRateValue(heartRateStats.avgBPM)) \(strings.heartRateUnit)")
+                        ]
+                    )
+                    .padding(.horizontal)
+
+                    Spacer().frame(height: 16)
+                }
+            }
+            .navigationTitle(strings.runDetails)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showDeleteConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
                 }
             }
         }
         .alert(strings.deleteRunConfirmTitle, isPresented: $showDeleteConfirm) {
             Button(strings.cancel, role: .cancel) { }
             Button(strings.delete, role: .destructive) {
+                onDelete()
                 dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    onDelete()
-                }
             }
         } message: {
             Text(strings.deleteRunConfirmMessage)
@@ -1177,6 +1137,47 @@ struct RunDetailView: View {
     private func heartRateValue(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "%.0f", value)
+    }
+
+    private var runTimeWindow: String {
+        var text = "\(formattedTime(run.startTime))"
+        if let end = run.endTime {
+            text += " - \(formattedTime(end))"
+        }
+        return text
+    }
+
+    private func formattedTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+}
+
+struct RunMetricCard: View {
+    let title: String
+    let rows: [(String, String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack {
+                    Text(row.0)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(row.1)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
     }
 }
 

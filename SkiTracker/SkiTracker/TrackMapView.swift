@@ -21,6 +21,24 @@ struct TrackMapView: UIViewRepresentable {
             case .generic: return .systemBlue
             }
         }
+
+        var lineWidth: CGFloat {
+            switch self {
+            case .lift: return 5.5
+            case .stopped: return 4.0
+            case .skiing, .generic: return 4.5
+            }
+        }
+
+        var lineDashPattern: [NSNumber]? {
+            switch self {
+            case .lift:
+                // Dashed lift line improves visibility over overlapping ski tracks.
+                return [8, 6]
+            default:
+                return nil
+            }
+        }
     }
 
     struct Segment: Identifiable {
@@ -98,6 +116,7 @@ struct TrackMapView: UIViewRepresentable {
     func updateUIView(_ mapView: MKMapView, context: Context) {
         context.coordinator.onUserInteraction = onUserInteraction
         mapView.showsUserLocation = followUser
+        context.coordinator.overlayStyles.removeAll()
 
         // Remove old overlays and annotations
         mapView.removeOverlays(mapView.overlays)
@@ -122,7 +141,7 @@ struct TrackMapView: UIViewRepresentable {
         var combinedRect: MKMapRect = .null
         for segment in displaySegments where segment.coordinates.count >= 2 {
             let polyline = MKPolyline(coordinates: segment.coordinates, count: segment.coordinates.count)
-            polyline.title = segment.style.rawValue
+            context.coordinator.overlayStyles[ObjectIdentifier(polyline)] = segment.style
             mapView.addOverlay(polyline)
             combinedRect = combinedRect.isNull ? polyline.boundingMapRect : combinedRect.union(polyline.boundingMapRect)
         }
@@ -177,13 +196,15 @@ struct TrackMapView: UIViewRepresentable {
     class Coordinator: NSObject, MKMapViewDelegate {
         var lastRecenterTrigger: Int = 0
         var onUserInteraction: (() -> Void)?
+        var overlayStyles: [ObjectIdentifier: TrackMapView.SegmentStyle] = [:]
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                let style = TrackMapView.SegmentStyle(rawValue: polyline.title ?? "") ?? .generic
+                let style = overlayStyles[ObjectIdentifier(polyline)] ?? .generic
                 renderer.strokeColor = style.color
-                renderer.lineWidth = 4.0
+                renderer.lineWidth = style.lineWidth
+                renderer.lineDashPattern = style.lineDashPattern
                 renderer.lineCap = .round
                 renderer.lineJoin = .round
                 return renderer

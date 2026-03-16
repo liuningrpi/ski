@@ -81,6 +81,30 @@ final class FirestoreService: ObservableObject {
         }
         data["points"] = pointsData
 
+        // Persist segmented ski/lift tracks so history map can render lift lines after sync.
+        let segmentsData = session.segments.map { segment -> [String: Any] in
+            let segmentPoints = segment.points.map { point -> [String: Any] in
+                [
+                    "lat": point.latitude,
+                    "lng": point.longitude,
+                    "alt": point.altitude,
+                    "speed": point.speed,
+                    "ts": Timestamp(date: point.timestamp)
+                ]
+            }
+            var encoded: [String: Any] = [
+                "id": segment.id.uuidString,
+                "type": segment.type.rawValue,
+                "startTime": Timestamp(date: segment.startTime),
+                "points": segmentPoints
+            ]
+            if let endTime = segment.endTime {
+                encoded["endTime"] = Timestamp(date: endTime)
+            }
+            return encoded
+        }
+        data["segments"] = segmentsData
+
         try await docRef.setData(data)
     }
 
@@ -194,6 +218,45 @@ final class FirestoreService: ObservableObject {
                     course: 0,
                     timestamp: ts.dateValue()
                 )
+            }
+        }
+
+        if let segmentsData = data["segments"] as? [[String: Any]] {
+            session.segments = segmentsData.compactMap { segmentData -> RunSegment? in
+                guard let typeRaw = segmentData["type"] as? String,
+                      let type = SkiingState(rawValue: typeRaw),
+                      let startTS = segmentData["startTime"] as? Timestamp else {
+                    return nil
+                }
+
+                var segment = RunSegment(type: type, startTime: startTS.dateValue())
+                if let endTS = segmentData["endTime"] as? Timestamp {
+                    segment.endTime = endTS.dateValue()
+                }
+
+                if let segmentPointsData = segmentData["points"] as? [[String: Any]] {
+                    segment.points = segmentPointsData.compactMap { pointData in
+                        guard let lat = pointData["lat"] as? Double,
+                              let lng = pointData["lng"] as? Double,
+                              let alt = pointData["alt"] as? Double,
+                              let speed = pointData["speed"] as? Double,
+                              let ts = pointData["ts"] as? Timestamp else {
+                            return nil
+                        }
+                        return TrackPoint(
+                            latitude: lat,
+                            longitude: lng,
+                            altitude: alt,
+                            horizontalAccuracy: 0,
+                            verticalAccuracy: 0,
+                            speed: speed,
+                            course: 0,
+                            timestamp: ts.dateValue()
+                        )
+                    }
+                }
+
+                return segment
             }
         }
 

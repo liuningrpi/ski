@@ -35,19 +35,26 @@ private func mapSegments(for dayGroup: DayGroup) -> [TrackMapView.Segment] {
 }
 
 private struct TrackSegmentLegend: View {
+    var showSkiing: Bool = true
+    var showLift: Bool = true
+
     var body: some View {
         HStack(spacing: 16) {
-            HStack(spacing: 6) {
-                Circle().fill(Color.blue).frame(width: 8, height: 8)
-                Text("Skiing")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            if showSkiing {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.blue).frame(width: 8, height: 8)
+                    Text("Skiing")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            HStack(spacing: 6) {
-                Circle().fill(Color.orange).frame(width: 8, height: 8)
-                Text("Lift")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            if showLift {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.yellow).frame(width: 8, height: 8)
+                    Text("Lift")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             Spacer()
         }
@@ -64,6 +71,14 @@ struct DayGroup: Identifiable {
 
     var totalDistance: Double {
         sessions.reduce(0) { $0 + $1.totalDistanceKm }
+    }
+
+    var runCount: Int {
+        sessions.reduce(0) { $0 + $1.runCount }
+    }
+
+    var liftCount: Int {
+        sessions.reduce(0) { $0 + $1.liftCount }
     }
 
     var totalDuration: TimeInterval {
@@ -355,7 +370,7 @@ struct DaySummaryView: View {
                         Text(dayGroup.date, style: .date)
                             .font(.title2)
                             .fontWeight(.bold)
-                        Text("\(allRuns.count) \(strings.runsCount)")
+                        Text("\(dayGroup.runCount) \(strings.runsCount)")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -363,6 +378,7 @@ struct DaySummaryView: View {
 
                     let daySegments = mapSegments(for: dayGroup)
                     if !daySegments.isEmpty {
+                        let hasLift = daySegments.contains { $0.style == .lift }
                         TrackMapView(
                             segments: daySegments,
                             followUser: false,
@@ -371,8 +387,42 @@ struct DaySummaryView: View {
                         .frame(height: 250)
                         .cornerRadius(12)
                         .padding(.horizontal)
-                        TrackSegmentLegend()
+                        TrackSegmentLegend(showSkiing: true, showLift: hasLift)
                     }
+
+                    HStack(spacing: 20) {
+                        VStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "figure.skiing.downhill")
+                                    .foregroundColor(.blue)
+                                Text("\(dayGroup.runCount)")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
+                            Text(strings.runsCount)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Divider().frame(height: 40)
+
+                        VStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "cablecar")
+                                    .foregroundColor(.yellow)
+                                Text("\(dayGroup.liftCount)")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
+                            Text(strings.liftsCompleted)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
 
                     // Summary Stats Grid
                     LazyVGrid(columns: [
@@ -650,6 +700,7 @@ struct SessionDetailView: View {
                 VStack(spacing: 16) {
                     let sessionSegments = mapSegments(for: session)
                     if !sessionSegments.isEmpty {
+                        let hasLift = sessionSegments.contains { $0.style == .lift }
                         TrackMapView(
                             segments: sessionSegments,
                             followUser: false,
@@ -658,34 +709,29 @@ struct SessionDetailView: View {
                         .frame(height: 300)
                         .cornerRadius(12)
                         .padding(.horizontal)
-                        TrackSegmentLegend()
+                        TrackSegmentLegend(showSkiing: true, showLift: hasLift)
                     }
-
-                    // Session info header
-                    sessionHeader
-
-                    // Segment summary (if available)
-                    if !session.segments.isEmpty {
-                        segmentSummary
-                    }
-
-                    // Statistics
-                    StatsView(
-                        durationFormatted: session.durationFormatted,
-                        distanceKm: session.totalDistanceKm,
-                        maxSpeedKmh: session.maxSpeedKmh,
-                        avgSpeedKmh: session.avgSpeedKmh,
-                        maxAltitude: session.maxAltitude,
-                        elevationDrop: session.elevationDrop,
-                        pointCount: session.points.count,
-                        showHeartRate: true,
-                        maxHeartRateBPM: sessionHeartRateStats.maxBPM,
-                        avgHeartRateBPM: sessionHeartRateStats.avgBPM
-                    )
 
                     if session.skiingRuns.count == 1, let run = session.skiingRuns.first {
                         singleRunDetailsSection(run: run)
                     } else if !session.skiingRuns.isEmpty {
+                        // Session-level summary is shown only for multi-run sessions.
+                        sessionHeader
+                        if !session.segments.isEmpty {
+                            segmentSummary
+                        }
+                        StatsView(
+                            durationFormatted: session.durationFormatted,
+                            distanceKm: session.totalDistanceKm,
+                            maxSpeedKmh: session.maxSpeedKmh,
+                            avgSpeedKmh: session.avgSpeedKmh,
+                            maxAltitude: session.maxAltitude,
+                            elevationDrop: session.elevationDrop,
+                            pointCount: session.points.count,
+                            showHeartRate: true,
+                            maxHeartRateBPM: sessionHeartRateStats.maxBPM,
+                            avgHeartRateBPM: sessionHeartRateStats.avgBPM
+                        )
                         // Individual runs (if available)
                         runsSection
                     }
@@ -838,6 +884,7 @@ struct SessionDetailView: View {
 
         VStack(spacing: 12) {
             RunMetricCard(
+                icon: "timer",
                 title: "Time",
                 rows: [
                     ("Run", "#1"),
@@ -847,6 +894,7 @@ struct SessionDetailView: View {
             )
 
             RunMetricCard(
+                icon: "point.topleft.down.to.point.bottomright.curvepath",
                 title: "Distance",
                 rows: [
                     (strings.distance, "\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)"),
@@ -856,6 +904,7 @@ struct SessionDetailView: View {
             )
 
             RunMetricCard(
+                icon: "gauge.with.needle.fill",
                 title: "Speed",
                 rows: [
                     (strings.maxSpeed, "\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)"),
@@ -864,6 +913,7 @@ struct SessionDetailView: View {
             )
 
             RunMetricCard(
+                icon: "mountain.2.fill",
                 title: "Altitude",
                 rows: [
                     (strings.startAltitude, "\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)"),
@@ -872,6 +922,7 @@ struct SessionDetailView: View {
             )
 
             RunMetricCard(
+                icon: "heart.fill",
                 title: "Heart Rate",
                 rows: [
                     (strings.maxHeartRate, "\(heartRateValue(singleRunHeartRateStats.maxBPM)) \(strings.heartRateUnit)"),
@@ -1032,6 +1083,7 @@ struct RunDetailView: View {
                 VStack(spacing: 16) {
                     let runSegments = mapSegments(for: run)
                     if !runSegments.isEmpty {
+                        let hasLift = runSegments.contains { $0.style == .lift }
                         TrackMapView(
                             segments: runSegments,
                             followUser: false,
@@ -1040,10 +1092,11 @@ struct RunDetailView: View {
                         .frame(height: 280)
                         .cornerRadius(12)
                         .padding(.horizontal)
-                        TrackSegmentLegend()
+                        TrackSegmentLegend(showSkiing: true, showLift: hasLift)
                     }
 
                     RunMetricCard(
+                        icon: "timer",
                         title: "Time",
                         rows: [
                             ("Run", "#\(runIndex)"),
@@ -1054,6 +1107,7 @@ struct RunDetailView: View {
                     .padding(.horizontal)
 
                     RunMetricCard(
+                        icon: "point.topleft.down.to.point.bottomright.curvepath",
                         title: "Distance",
                         rows: [
                             (strings.distance, "\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)"),
@@ -1064,6 +1118,7 @@ struct RunDetailView: View {
                     .padding(.horizontal)
 
                     RunMetricCard(
+                        icon: "gauge.with.needle.fill",
                         title: "Speed",
                         rows: [
                             (strings.maxSpeed, "\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)"),
@@ -1073,6 +1128,7 @@ struct RunDetailView: View {
                     .padding(.horizontal)
 
                     RunMetricCard(
+                        icon: "mountain.2.fill",
                         title: "Altitude",
                         rows: [
                             (strings.startAltitude, "\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)"),
@@ -1082,6 +1138,7 @@ struct RunDetailView: View {
                     .padding(.horizontal)
 
                     RunMetricCard(
+                        icon: "heart.fill",
                         title: "Heart Rate",
                         rows: [
                             (strings.maxHeartRate, "\(heartRateValue(heartRateStats.maxBPM)) \(strings.heartRateUnit)"),
@@ -1155,13 +1212,18 @@ struct RunDetailView: View {
 }
 
 struct RunMetricCard: View {
+    let icon: String
     let title: String
     let rows: [(String, String)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(.blue)
+                Text(title)
+                    .font(.headline)
+            }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 HStack {
                     Text(row.0)

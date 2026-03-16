@@ -16,7 +16,7 @@ struct TrackMapView: UIViewRepresentable {
         var color: UIColor {
             switch self {
             case .skiing: return .systemBlue
-            case .lift: return .systemOrange
+            case .lift: return .systemYellow
             case .stopped: return .systemGray
             case .generic: return .systemBlue
             }
@@ -24,7 +24,7 @@ struct TrackMapView: UIViewRepresentable {
 
         var lineWidth: CGFloat {
             switch self {
-            case .lift: return 5.5
+            case .lift: return 7.0
             case .stopped: return 4.0
             case .skiing, .generic: return 4.5
             }
@@ -33,10 +33,18 @@ struct TrackMapView: UIViewRepresentable {
         var lineDashPattern: [NSNumber]? {
             switch self {
             case .lift:
-                // Dashed lift line improves visibility over overlapping ski tracks.
-                return [8, 6]
+                // Keep lift mostly solid for visibility on satellite/dark maps.
+                return [2, 3]
             default:
                 return nil
+            }
+        }
+
+        var drawPriority: Int {
+            switch self {
+            case .skiing, .generic: return 0
+            case .stopped: return 1
+            case .lift: return 2
             }
         }
     }
@@ -138,8 +146,10 @@ struct TrackMapView: UIViewRepresentable {
             return
         }
 
+        let sortedSegments = displaySegments.sorted { $0.style.drawPriority < $1.style.drawPriority }
+
         var combinedRect: MKMapRect = .null
-        for segment in displaySegments where segment.coordinates.count >= 2 {
+        for segment in sortedSegments where segment.coordinates.count >= 2 {
             let polyline = MKPolyline(coordinates: segment.coordinates, count: segment.coordinates.count)
             context.coordinator.overlayStyles[ObjectIdentifier(polyline)] = segment.style
             mapView.addOverlay(polyline)

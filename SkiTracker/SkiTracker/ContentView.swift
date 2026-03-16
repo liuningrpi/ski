@@ -29,7 +29,6 @@ struct ContentView: View {
     @State private var isPollingHeartRate = false
     @State private var activeLiveSessionId: String?
     @State private var isLivePanelCollapsed = false
-    @State private var persistedRunIDs: Set<UUID> = []
     @State private var isLiveMapAutoFollow = true
     @State private var liveMapRecenterTrigger = 0
 
@@ -129,9 +128,7 @@ struct ContentView: View {
                 Text(strings.stopConfirmMessage)
             }
             .onAppear {
-                tracker.segmenter.onSegmentCompleted = { segment in
-                    persistCompletedRun(segment)
-                }
+                tracker.segmenter.onSegmentCompleted = nil
                 Task {
                     await squadService.bootstrapIfNeeded()
                 }
@@ -510,7 +507,6 @@ struct ContentView: View {
         isLivePanelCollapsed = false
         isLiveMapAutoFollow = true
         liveMapRecenterTrigger += 1
-        persistedRunIDs.removeAll()
 
         liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
         isPollingHeartRate = false
@@ -551,7 +547,7 @@ struct ContentView: View {
         statsTimer?.invalidate()
         statsTimer = nil
         tracker.stopTracking()
-        _ = persistCompletedRunsFromSegmenter()
+        persistFullSession()
 
         HeartRateService.shared.stopLiveUpdates()
         watchHeartRateReceiver.endLiveSession()
@@ -559,7 +555,6 @@ struct ContentView: View {
         isPollingHeartRate = false
         activeLiveSessionId = nil
         isLiveMapAutoFollow = true
-        persistedRunIDs.removeAll()
         statsTick = 0
     }
 
@@ -582,44 +577,16 @@ struct ContentView: View {
         return session
     }
 
-    private func buildSession(from run: RunSegment) -> TrackSession {
-        var session = TrackSession(
-            startedAt: run.startTime,
-            deviceInfo: nil
-        )
-        session.endedAt = run.endTime ?? run.points.last?.timestamp ?? Date()
-        session.points = run.points
-        session.segments = [run]
-        return session
-    }
-
-    private func persistCompletedRun(_ segment: RunSegment) {
-        guard segment.type == .skiing else { return }
-        guard !persistedRunIDs.contains(segment.id) else { return }
-
-        let session = buildSession(from: segment)
+    private func persistFullSession() {
+        let session = tracker.buildSession()
+        guard session.points.count >= 2 else { return }
         sessionStore.save(session)
-        persistedRunIDs.insert(segment.id)
         refreshLeaderboard(newSessions: [session])
-    }
-
-    private func persistCompletedRunsFromSegmenter() -> Int {
-        var newSessions: [TrackSession] = []
-        for run in tracker.segmenter.skiingRuns where !persistedRunIDs.contains(run.id) {
-            let session = buildSession(from: run)
-            sessionStore.save(session)
-            persistedRunIDs.insert(run.id)
-            newSessions.append(session)
-        }
-        if !newSessions.isEmpty {
-            refreshLeaderboard(newSessions: newSessions)
-        }
-        return newSessions.count
     }
 
     private func refreshLeaderboard(newSessions: [TrackSession]) {
         guard !newSessions.isEmpty else { return }
-        let latestSessions = newSessions + sessionStore.sessions
+        let latestSessions = sessionStore.sessions
         if let user = AuthService.shared.currentUser {
             Task {
                 await LeaderboardService.shared.refreshLeaderboard(

@@ -325,7 +325,7 @@ struct HistoryView: View {
                             Text(strings.daySummary)
                                 .foregroundColor(.primary)
                             Spacer()
-                            Text("\(dayGroup.sessions.count) \(strings.runsCount)")
+                            Text("\(dayGroup.sessions.count) \(strings.sessionsCount)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Image(systemName: "chevron.right")
@@ -426,6 +426,12 @@ struct RunWithSession: Identifiable {
     let runIndex: Int  // 1-based index within the day
 }
 
+private struct SessionRunGroup: Identifiable {
+    let id: UUID
+    let session: TrackSession
+    let runs: [RunWithSession]
+}
+
 // MARK: - Day Summary View
 
 struct DaySummaryView: View {
@@ -456,6 +462,15 @@ struct DaySummaryView: View {
             }
         }
         return runs
+    }
+
+    private var runsGroupedBySession: [SessionRunGroup] {
+        let sortedSessions = dayGroup.sessions.sorted(by: { $0.startedAt < $1.startedAt })
+        return sortedSessions.compactMap { session in
+            let runs = allRuns.filter { $0.session.id == session.id }
+            guard !runs.isEmpty else { return nil }
+            return SessionRunGroup(id: session.id, session: session, runs: runs)
+        }
     }
 
     var body: some View {
@@ -651,39 +666,62 @@ struct DaySummaryView: View {
     @ViewBuilder
     private var runsListSection: some View {
         let strings = settings.strings
-        let units = settings.unitSystem
 
         VStack(alignment: .leading, spacing: 12) {
             Text(strings.runDetails)
                 .font(.headline)
                 .padding(.horizontal)
 
-            ForEach(allRuns) { runWithSession in
-                let run = runWithSession.run
+            ForEach(runsGroupedBySession) { group in
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Image(systemName: "clock")
+                            .foregroundColor(.secondary)
+                        Text(sessionWindow(group.session))
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(group.runs.count) \(strings.runsCount)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
 
-                NavigationLink {
-                    RunDetailView(
-                        run: run,
-                        runIndex: runWithSession.runIndex,
-                        onDelete: {
-                            deleteRun(runWithSession)
+                    ForEach(Array(group.runs.enumerated()), id: \.element.id) { idx, runWithSession in
+                        NavigationLink {
+                            RunDetailView(
+                                run: runWithSession.run,
+                                runIndex: runWithSession.runIndex,
+                                onDelete: {
+                                    deleteRun(runWithSession)
+                                }
+                            )
+                        } label: {
+                            runRow(
+                                number: runWithSession.runIndex,
+                                run: runWithSession.run,
+                                units: settings.unitSystem,
+                                embedded: true
+                            )
                         }
-                    )
-                } label: {
-                    runRow(
-                        number: runWithSession.runIndex,
-                        run: run,
-                        units: units
-                    )
+                        .buttonStyle(.plain)
+
+                        if idx < group.runs.count - 1 {
+                            Divider()
+                                .padding(.leading, 12)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
                 .padding(.horizontal)
             }
         }
     }
 
     @ViewBuilder
-    private func runRow(number: Int, run: RunSegment, units: UnitSystem) -> some View {
+    private func runRow(number: Int, run: RunSegment, units: UnitSystem, embedded: Bool = false) -> some View {
         HStack {
             Text("#\(number)")
                 .font(.headline)
@@ -734,9 +772,20 @@ struct DaySummaryView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
-        .padding()
-        .background(Color(.systemGray6))
+        .padding(.horizontal, embedded ? 12 : 16)
+        .padding(.vertical, embedded ? 12 : 14)
+        .background(embedded ? Color.clear : Color(.systemGray6))
         .cornerRadius(10)
+    }
+
+    private func sessionWindow(_ session: TrackSession) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        let start = formatter.string(from: session.startedAt)
+        if let end = session.endedAt {
+            return "\(start) - \(formatter.string(from: end))"
+        }
+        return start
     }
 
     private func deleteRun(_ runWithSession: RunWithSession) {
@@ -992,11 +1041,15 @@ struct SessionDetailView: View {
     @EnvironmentObject var sessionStore: SessionStore
 
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject var authService = AuthService.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var showDeleteSessionConfirm = false
     @State private var sessionHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
     @State private var singleRunHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
+    @State private var sessionPlaybackProgress = 0.0
+    @State private var isSessionPlaybackRunning = false
+    @State private var sessionPlaybackTimer: Timer?
 
     var body: some View {
         let strings = settings.strings
@@ -1010,12 +1063,17 @@ struct SessionDetailView: View {
                         TrackMapView(
                             segments: sessionSegments,
                             followUser: false,
-                            showEndMarker: true
+                            showEndMarker: false,
+                            playbackCoordinate: sessionPlaybackCurrentPoint?.coordinate,
+                            playbackInitials: sessionPlaybackUserInitials,
+                            playbackPhotoURL: sessionPlaybackUserPhotoURL
                         )
                         .frame(height: 300)
                         .cornerRadius(12)
                         .padding(.horizontal)
                         TrackSegmentLegend(showSkiing: true, showLift: hasLift)
+                        sessionPlaybackControlCard
+                            .padding(.horizontal)
                     }
 
                     if session.skiingRuns.count == 1, let run = session.skiingRuns.first {
@@ -1071,6 +1129,7 @@ struct SessionDetailView: View {
                 Text(strings.deleteConfirmMessage)
             }
             .task(id: session.id) {
+                sessionPlaybackProgress = 0
                 await loadSessionHeartRate()
                 if let run = session.skiingRuns.first, session.skiingRuns.count == 1 {
                     await loadSingleRunHeartRate(run: run)
@@ -1080,6 +1139,9 @@ struct SessionDetailView: View {
                     }
                 }
             }
+        }
+        .onDisappear {
+            stopSessionPlaybackTimer()
         }
     }
 
@@ -1119,6 +1181,205 @@ struct SessionDetailView: View {
         await MainActor.run {
             singleRunHeartRateStats = stats
         }
+    }
+
+    private var sessionPlaybackPoints: [TrackPoint] {
+        if session.points.count >= 2 {
+            return session.points.sorted { $0.timestamp < $1.timestamp }
+        }
+        let fromSegments = session.segments
+            .sorted { $0.startTime < $1.startTime }
+            .flatMap { $0.points }
+        return fromSegments.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    private var sessionPlaybackCurrentPoint: TrackPoint? {
+        guard !sessionPlaybackPoints.isEmpty else { return nil }
+        let maxIndex = Double(sessionPlaybackPoints.count - 1)
+        let clamped = min(max(0, sessionPlaybackProgress), maxIndex)
+        return interpolatedSessionPlaybackPoint(at: clamped)
+    }
+
+    private var sessionPlaybackElapsedTime: TimeInterval {
+        guard !sessionPlaybackPoints.isEmpty else { return 0 }
+        let maxIndex = Double(sessionPlaybackPoints.count - 1)
+        let clamped = min(max(0, sessionPlaybackProgress), maxIndex)
+        let lower = Int(floor(clamped))
+        let upper = Int(ceil(clamped))
+        guard upper < sessionPlaybackPoints.count else {
+            return sessionPlaybackPoints[lower].timestamp.timeIntervalSince(session.startedAt)
+        }
+        let t = clamped - Double(lower)
+        let start = sessionPlaybackPoints[lower].timestamp.timeIntervalSince(session.startedAt)
+        let end = sessionPlaybackPoints[upper].timestamp.timeIntervalSince(session.startedAt)
+        return start + (end - start) * t
+    }
+
+    private var sessionPlaybackSpeedKmh: Double {
+        guard let point = sessionPlaybackCurrentPoint else { return 0 }
+        if point.speed >= 0 {
+            return point.speed * 3.6
+        }
+        guard sessionPlaybackPoints.count >= 2 else { return 0 }
+        let idx = min(max(1, Int(round(sessionPlaybackProgress))), sessionPlaybackPoints.count - 1)
+        let prev = sessionPlaybackPoints[idx - 1]
+        let curr = sessionPlaybackPoints[idx]
+        let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
+        guard dt > 0 else { return 0 }
+        let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
+        let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
+        return (currLoc.distance(from: prevLoc) / dt) * 3.6
+    }
+
+    private var sessionPlaybackAltitudeM: Double {
+        sessionPlaybackCurrentPoint?.altitude ?? 0
+    }
+
+    private var sessionPlaybackUserInitials: String {
+        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? "You"
+        let parts = base
+            .split(whereSeparator: { $0 == " " || $0 == "_" || $0 == "-" || $0 == "." })
+            .filter { !$0.isEmpty }
+        if parts.count >= 2 {
+            return String(parts.prefix(2).compactMap { $0.first }).uppercased()
+        }
+        if let first = parts.first?.first {
+            return String(first).uppercased()
+        }
+        return "U"
+    }
+
+    private var sessionPlaybackUserPhotoURL: URL? {
+        guard let raw = authService.currentUser?.photoURL, let url = URL(string: raw) else {
+            return nil
+        }
+        return url
+    }
+
+    @ViewBuilder
+    private var sessionPlaybackControlCard: some View {
+        let strings = settings.strings
+        let units = settings.unitSystem
+
+        VStack(spacing: 10) {
+            HStack {
+                Text(strings.sessionPlayback)
+                    .font(.headline)
+                Spacer()
+                Button {
+                    if isSessionPlaybackRunning {
+                        stopSessionPlaybackTimer()
+                    } else {
+                        startSessionPlayback()
+                    }
+                } label: {
+                    Label(isSessionPlaybackRunning ? strings.pause : strings.play, systemImage: isSessionPlaybackRunning ? "pause.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    resetSessionPlayback()
+                } label: {
+                    Label(strings.reset, systemImage: "gobackward")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            HStack {
+                Label(formattedElapsed(sessionPlaybackElapsedTime), systemImage: "clock")
+                Spacer()
+                Label("\(settings.formatSpeed(sessionPlaybackSpeedKmh)) \(units.speedUnit)", systemImage: "speedometer")
+                Spacer()
+                Label("\(settings.formatAltitude(sessionPlaybackAltitudeM)) \(units.altitudeUnit)", systemImage: "mountain.2.fill")
+            }
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+
+            if sessionPlaybackPoints.count > 1 {
+                Slider(
+                    value: Binding(
+                        get: { sessionPlaybackProgress },
+                        set: { sessionPlaybackProgress = $0 }
+                    ),
+                    in: 0...Double(sessionPlaybackPoints.count - 1)
+                )
+                .tint(.blue)
+            } else {
+                Text(strings.noTrackData)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+
+    private func startSessionPlayback() {
+        guard sessionPlaybackPoints.count > 1 else { return }
+        let maxProgress = Double(sessionPlaybackPoints.count - 1)
+        if sessionPlaybackProgress >= maxProgress {
+            sessionPlaybackProgress = 0
+        }
+        stopSessionPlaybackTimer()
+        isSessionPlaybackRunning = true
+        let tick = 1.0 / 30.0
+        let targetDuration = min(25.0, max(8.0, Double(sessionPlaybackPoints.count) * 0.05))
+        let progressStep = maxProgress * (tick / targetDuration)
+        sessionPlaybackTimer = Timer.scheduledTimer(withTimeInterval: tick, repeats: true) { _ in
+            if sessionPlaybackProgress < maxProgress {
+                sessionPlaybackProgress = min(maxProgress, sessionPlaybackProgress + progressStep)
+            } else {
+                stopSessionPlaybackTimer()
+            }
+        }
+    }
+
+    private func resetSessionPlayback() {
+        stopSessionPlaybackTimer()
+        sessionPlaybackProgress = 0
+    }
+
+    private func stopSessionPlaybackTimer() {
+        sessionPlaybackTimer?.invalidate()
+        sessionPlaybackTimer = nil
+        isSessionPlaybackRunning = false
+    }
+
+    private func interpolatedSessionPlaybackPoint(at progress: Double) -> TrackPoint? {
+        guard !sessionPlaybackPoints.isEmpty else { return nil }
+        let maxIndex = Double(sessionPlaybackPoints.count - 1)
+        let clamped = min(max(0, progress), maxIndex)
+        let lower = Int(floor(clamped))
+        let upper = Int(ceil(clamped))
+        guard upper < sessionPlaybackPoints.count, lower != upper else {
+            return sessionPlaybackPoints[lower]
+        }
+
+        let from = sessionPlaybackPoints[lower]
+        let to = sessionPlaybackPoints[upper]
+        let t = clamped - Double(lower)
+        func lerp(_ a: Double, _ b: Double) -> Double { a + (b - a) * t }
+        let fromTs = from.timestamp.timeIntervalSince1970
+        let toTs = to.timestamp.timeIntervalSince1970
+
+        return TrackPoint(
+            latitude: lerp(from.latitude, to.latitude),
+            longitude: lerp(from.longitude, to.longitude),
+            altitude: lerp(from.altitude, to.altitude),
+            horizontalAccuracy: lerp(from.horizontalAccuracy, to.horizontalAccuracy),
+            verticalAccuracy: lerp(from.verticalAccuracy, to.verticalAccuracy),
+            speed: from.speed >= 0 ? lerp(from.speed, to.speed) : -1,
+            course: from.course >= 0 ? lerp(from.course, to.course) : -1,
+            timestamp: Date(timeIntervalSince1970: lerp(fromTs, toTs))
+        )
+    }
+
+    private func formattedElapsed(_ interval: TimeInterval) -> String {
+        let clamped = max(0, Int(interval.rounded()))
+        let minutes = clamped / 60
+        let seconds = clamped % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
     // MARK: - Segment Summary

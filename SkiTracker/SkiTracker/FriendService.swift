@@ -58,9 +58,11 @@ final class FriendService: ObservableObject {
 
     func processPendingInviteIfNeeded(currentUser: AppUser) async {
         guard let friendUID = pendingInviteUID else { return }
-        await addFriend(friendUID: friendUID, currentUser: currentUser, source: "pending_invite")
-        await MainActor.run {
-            self.pendingInviteUID = nil
+        let succeeded = await addFriend(friendUID: friendUID, currentUser: currentUser, source: "pending_invite")
+        if succeeded {
+            await MainActor.run {
+                self.pendingInviteUID = nil
+            }
         }
     }
 
@@ -97,34 +99,40 @@ final class FriendService: ObservableObject {
             }
         } catch {
             await MainActor.run {
-                self.errorMessage = error.localizedDescription
+                if self.isOfflineFirestoreError(error) {
+                    self.errorMessage = SettingsManager.shared.strings.friendOfflineRefresh
+                } else {
+                    self.errorMessage = error.localizedDescription
+                }
                 self.isLoading = false
             }
         }
     }
 
-    func addFriend(from input: String, currentUser: AppUser, source: String) async {
+    @discardableResult
+    func addFriend(from input: String, currentUser: AppUser, source: String) async -> Bool {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return false }
 
         guard let uid = extractUID(from: trimmed) else {
             await MainActor.run {
                 self.errorMessage = SettingsManager.shared.strings.friendInvalidInvite
             }
-            return
+            return false
         }
 
-        await addFriend(friendUID: uid, currentUser: currentUser, source: source)
+        return await addFriend(friendUID: uid, currentUser: currentUser, source: source)
     }
 
-    func addFriend(friendUID: String, currentUser: AppUser, source: String) async {
+    @discardableResult
+    func addFriend(friendUID: String, currentUser: AppUser, source: String) async -> Bool {
         let strings = SettingsManager.shared.strings
 
         if friendUID == currentUser.uid {
             await MainActor.run {
                 self.errorMessage = strings.friendCannotAddSelf
             }
-            return
+            return false
         }
 
         await MainActor.run {
@@ -139,7 +147,7 @@ final class FriendService: ObservableObject {
                     self.errorMessage = strings.friendAccountNotFound
                     self.isLoading = false
                 }
-                return
+                return false
             }
 
             let currentDoc = try await userDocument(uid: currentUser.uid).getDocument()
@@ -184,11 +192,19 @@ final class FriendService: ObservableObject {
                 self.statusMessage = "\(strings.friendAdded): \(finalTargetName)"
                 self.isLoading = false
             }
+            return true
         } catch {
             await MainActor.run {
-                self.errorMessage = error.localizedDescription
+                if self.isOfflineFirestoreError(error) {
+                    self.pendingInviteUID = friendUID
+                    self.errorMessage = nil
+                    self.statusMessage = strings.friendOfflineQueued
+                } else {
+                    self.errorMessage = error.localizedDescription
+                }
                 self.isLoading = false
             }
+            return false
         }
     }
 
@@ -242,5 +258,14 @@ final class FriendService: ObservableObject {
 
     private func friendsCollection(uid: String) -> CollectionReference {
         userDocument(uid: uid).collection("friends")
+    }
+
+    private func isOfflineFirestoreError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == FirestoreErrorDomain {
+            return nsError.code == FirestoreErrorCode.unavailable.rawValue ||
+                nsError.code == FirestoreErrorCode.deadlineExceeded.rawValue
+        }
+        return nsError.localizedDescription.lowercased().contains("client is offline")
     }
 }

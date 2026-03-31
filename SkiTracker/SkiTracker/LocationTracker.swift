@@ -181,13 +181,14 @@ final class LocationTracker: NSObject, ObservableObject {
 
     /// Dynamic distance filter based on speed (power saving)
     private func adjustDistanceFilter(for speed: Double) {
+        let performanceMode = SettingsManager.shared.performanceModeEnabled
         if speed < 1.0 {
             locationManager.distanceFilter = 2.0
         } else if speed < 5.0 {
             locationManager.distanceFilter = 3.0
         } else {
-            // High speed skiing: keep denser sampling for curved turns.
-            locationManager.distanceFilter = 4.0
+            // High speed skiing: default 2m; Performance mode pushes to 1m for peak capture.
+            locationManager.distanceFilter = performanceMode ? 1.0 : 2.0
         }
     }
 }

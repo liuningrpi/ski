@@ -149,6 +149,7 @@ final class RunSegmenter: ObservableObject {
 
         // Minimum run duration (seconds)
         var minRunDuration: Double = 20.0
+        var minRunDistanceMeters: Double = SkiMetrics.minRecordedRunDistanceMeters
 
         // Require a clear downhill move before starting a new run.
         // 5.0 m ~= 16.4 ft
@@ -183,7 +184,11 @@ final class RunSegmenter: ObservableObject {
     // MARK: - Statistics
 
     var skiingRunCount: Int {
-        segments.filter { $0.type == .skiing && $0.durationSeconds >= config.minRunDuration }.count
+        segments.filter {
+            $0.type == .skiing &&
+            $0.durationSeconds >= config.minRunDuration &&
+            $0.totalDistanceMeters >= config.minRunDistanceMeters
+        }.count
     }
 
     var liftCount: Int {
@@ -191,7 +196,9 @@ final class RunSegmenter: ObservableObject {
     }
 
     var totalSkiingDistance: Double {
-        segments.filter { $0.type == .skiing }.reduce(0) { $0 + $1.totalDistanceKm }
+        segments
+            .filter { $0.type == .skiing && $0.totalDistanceMeters >= config.minRunDistanceMeters }
+            .reduce(0) { $0 + $1.totalDistanceKm }
     }
 
     var totalVerticalDrop: Double {
@@ -422,7 +429,8 @@ final class RunSegmenter: ObservableObject {
             let shouldSave = forceIncludeCurrentSkiing
                 ? segment.points.count > 1
                 : segment.durationSeconds >= config.minRunDuration
-            guard shouldSave else { return }
+            guard shouldSave,
+                  segment.totalDistanceMeters >= config.minRunDistanceMeters else { return }
 
             if mergeIntoPreviousSkiingIfNeeded(segment) {
                 return
@@ -487,7 +495,11 @@ final class RunSegmenter: ObservableObject {
     // MARK: - Get Skiing Runs Only
 
     var skiingRuns: [RunSegment] {
-        segments.filter { $0.type == .skiing && $0.durationSeconds >= config.minRunDuration }
+        segments.filter {
+            $0.type == .skiing &&
+            $0.durationSeconds >= config.minRunDuration &&
+            $0.totalDistanceMeters >= config.minRunDistanceMeters
+        }
     }
 
     // MARK: - Delete Run

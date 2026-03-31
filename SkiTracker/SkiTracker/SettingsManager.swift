@@ -120,7 +120,7 @@ struct LocalizedStrings {
 
     // Tracking
     var startSkiing: String {
-        language == .chinese ? "开始滑雪" : "Start Skiing"
+        language == .chinese ? "开始记录" : "Start Recording"
     }
 
     var stopRecording: String {
@@ -243,6 +243,20 @@ struct LocalizedStrings {
         language == .chinese ? "单位" : "Units"
     }
 
+    var performanceModeTitle: String {
+        language == .chinese ? "性能模式 (1m)" : "Performance Mode (1m)"
+    }
+
+    var performanceModeDescription: String {
+        language == .chinese
+            ? "高速时把定位采样间距从 2m 降到 1m，峰值更容易捕捉，但更耗电。"
+            : "Use 1m high-speed sampling instead of 2m to capture peaks more aggressively (higher battery use)."
+    }
+
+    var performanceSection: String {
+        language == .chinese ? "性能" : "Performance"
+    }
+
     var supportTitle: String {
         language == .chinese ? "支持开发者" : "Support the Developer"
     }
@@ -326,6 +340,10 @@ struct LocalizedStrings {
 
     var runsCount: String {
         language == .chinese ? "趟" : "runs"
+    }
+
+    var sessionsCount: String {
+        language == .chinese ? "次记录" : "sessions"
     }
 
     // Authentication
@@ -424,6 +442,10 @@ struct LocalizedStrings {
 
     var dayPlayback: String {
         language == .chinese ? "全天回放" : "Day Playback"
+    }
+
+    var sessionPlayback: String {
+        language == .chinese ? "会话回放" : "Session Replay"
     }
 
     var play: String {
@@ -608,6 +630,14 @@ struct LocalizedStrings {
         language == .chinese ? "已添加好友" : "Friend added"
     }
 
+    var friendOfflineQueued: String {
+        language == .chinese ? "当前离线，好友邀请已保存，联网后会自动重试。" : "You are offline. Friend invite was saved and will retry automatically when online."
+    }
+
+    var friendOfflineRefresh: String {
+        language == .chinese ? "当前离线，请联网后刷新好友列表。" : "You are offline. Reconnect and refresh friends."
+    }
+
     var cameraPermissionRequired: String {
         language == .chinese ? "需要相机权限以扫描二维码。请在系统设置中开启。" : "Camera permission is required to scan QR codes. Enable it in Settings."
     }
@@ -683,6 +713,12 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var performanceModeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(performanceModeEnabled, forKey: "performance_mode_enabled")
+        }
+    }
+
     var strings: LocalizedStrings {
         LocalizedStrings(language: language)
     }
@@ -706,6 +742,8 @@ final class SettingsManager: ObservableObject {
             let region = Locale.current.region?.identifier ?? ""
             self.unitSystem = (region == "US") ? .imperial : .metric
         }
+
+        self.performanceModeEnabled = UserDefaults.standard.bool(forKey: "performance_mode_enabled")
     }
 
     // MARK: - Unit Conversions

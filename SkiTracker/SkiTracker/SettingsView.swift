@@ -95,6 +95,20 @@ struct SettingsView: View {
                     Label(strings.unitsLabel, systemImage: "ruler")
                 }
 
+                // Performance Sampling Mode
+                Section {
+                    Toggle(isOn: $settings.performanceModeEnabled) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(strings.performanceModeTitle)
+                            Text(strings.performanceModeDescription)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } header: {
+                    Label(strings.performanceSection, systemImage: "speedometer")
+                }
+
                 // Location Permission Section
                 Section {
                     HStack {

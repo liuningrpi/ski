@@ -38,16 +38,13 @@ struct LoginView: View {
                 VStack(spacing: 16) {
                     // Apple Sign In
                     SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.fullName, .email]
-                    } onCompletion: { _ in
-                        // Handled by AuthService
+                        authService.configureAppleSignInRequest(request)
+                    } onCompletion: { result in
+                        authService.handleAppleSignInResult(result)
                     }
                     .signInWithAppleButtonStyle(.black)
                     .frame(height: 50)
                     .cornerRadius(12)
-                    .onTapGesture {
-                        authService.signInWithApple()
-                    }
 
                     // Google Sign In
                     Button {

@@ -83,7 +83,10 @@ struct TrackSession: Codable, Identifiable {
 
     /// Number of skiing runs
     var runCount: Int {
-        segments.filter { $0.type == .skiing }.count
+        segments.filter {
+            $0.type == .skiing &&
+            $0.totalDistanceMeters >= SkiMetrics.minRecordedRunDistanceMeters
+        }.count
     }
 
     /// Number of lift rides
@@ -93,12 +96,20 @@ struct TrackSession: Codable, Identifiable {
 
     /// Total vertical drop from skiing segments only
     var totalVerticalDrop: Double {
-        segments.filter { $0.type == .skiing }.reduce(0) { $0 + $1.cumulativeDescent }
+        segments
+            .filter {
+                $0.type == .skiing &&
+                $0.totalDistanceMeters >= SkiMetrics.minRecordedRunDistanceMeters
+            }
+            .reduce(0) { $0 + $1.cumulativeDescent }
     }
 
     /// Skiing runs only
     var skiingRuns: [RunSegment] {
-        segments.filter { $0.type == .skiing }
+        segments.filter {
+            $0.type == .skiing &&
+            $0.totalDistanceMeters >= SkiMetrics.minRecordedRunDistanceMeters
+        }
     }
 
     /// Lift rides only

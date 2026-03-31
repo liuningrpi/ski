@@ -4,6 +4,7 @@ import CoreLocation
 enum SkiMetrics {
 
     // Competitive mode: closer to how many ski apps report speed.
+    static let minRecordedRunDistanceMeters = 50.0
     private static let maxPlausibleSpeedMps = 35.0   // ~78 mph
     private static let minMovingSpeedMps = 2.0       // exclude slow coasting / queue drift
     private static let maxAscentRateForMoving = 0.15 // m/s; filter clear lift ascent from avg speed
@@ -75,18 +76,8 @@ enum SkiMetrics {
             }
         }
 
-        guard !candidates.isEmpty else { return 0 }
-        candidates.sort()
-
-        // Competitive peak: near-maximum while still suppressing obvious one-off spikes.
-        let robustPeakMps: Double
-        if candidates.count < 20 {
-            robustPeakMps = candidates.last ?? 0
-        } else {
-            let idx = Int((Double(candidates.count - 1) * 0.995).rounded(.down))
-            robustPeakMps = candidates[min(max(0, idx), candidates.count - 1)]
-        }
-        return robustPeakMps * 3.6
+        guard let maxMps = candidates.max() else { return 0 }
+        return maxMps * 3.6
     }
 
     private static func validDeltaTime(from prev: TrackPoint, to curr: TrackPoint) -> Double? {

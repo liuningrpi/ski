@@ -165,7 +165,7 @@ struct FriendsView: View {
                                 .foregroundColor(.secondary)
                         }
                         if friend.hiddenInCompetition {
-                            Text(settings.language == .chinese ? "已从排行榜隐藏" : "Hidden from competition")
+                            Text(strings.friendHiddenBadge)
                                 .font(.caption2)
                                 .foregroundColor(.orange)
                         }
@@ -176,7 +176,7 @@ struct FriendsView: View {
                                 await friendService.removeFriend(friendUID: friend.uid, currentUserUID: currentUser.uid)
                             }
                         } label: {
-                            Label(settings.language == .chinese ? "删除" : "Delete", systemImage: "trash")
+                            Label(strings.delete, systemImage: "trash")
                         }
 
                         Button {
@@ -189,8 +189,8 @@ struct FriendsView: View {
                             }
                         } label: {
                             let title = friend.hiddenInCompetition
-                                ? (settings.language == .chinese ? "取消隐藏" : "Unhide")
-                                : (settings.language == .chinese ? "隐藏" : "Hide")
+                                ? strings.unhide
+                                : strings.hide
                             Label(title, systemImage: friend.hiddenInCompetition ? "eye" : "eye.slash")
                         }
                         .tint(friend.hiddenInCompetition ? .green : .orange)
@@ -238,6 +238,7 @@ struct FriendsView: View {
 
 struct ScannerContainerView: View {
     let onCodeScanned: (String) -> Void
+    @ObservedObject var settings = SettingsManager.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -248,7 +249,7 @@ struct ScannerContainerView: View {
             .ignoresSafeArea()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") { dismiss() }
+                    Button(settings.strings.close) { dismiss() }
                 }
             }
         }

@@ -76,6 +76,12 @@ final class LoggingService {
 
     // MARK: - Specialized Logging
 
+    enum FeedbackSubmitResult {
+        case success
+        case dailyLimitExceeded
+        case failure
+    }
+
     func logStateChange(from: SkiingState, to: SkiingState, speed: Double, altitude: Double, altitudeRate: Double) {
         let metadata: [String: String] = [
             "fromState": from.rawValue,
@@ -132,7 +138,13 @@ final class LoggingService {
         info("Run deleted", category: "Runs", metadata: metadata)
     }
 
-    func logFeedback(userId: String, userEmail: String, feedback: String, timestamp: String) {
+    func logFeedback(
+        userId: String,
+        userEmail: String,
+        feedback: String,
+        timestamp: String,
+        screenshots: [UIImage] = []
+    ) async -> FeedbackSubmitResult {
         // Log to regular logs
         let metadata: [String: String] = [
             "userId": userId,
@@ -143,6 +155,8 @@ final class LoggingService {
 
         // Also store in dedicated feedback collection for email forwarding
         // This collection can be monitored by Firebase Cloud Functions to send emails
+        let encodedScreenshots = encodeScreenshotsForFirestore(screenshots)
+
         let feedbackData: [String: Any] = [
             "userId": userId,
             "userEmail": userEmail,
@@ -153,16 +167,57 @@ final class LoggingService {
             "appVersion": appVersion,
             "subject": "[SkiTracker User Comment]",
             "targetEmail": "pulseai@pulseaisolution.com",
-            "status": "pending"  // Can be updated by Cloud Function after sending
+            "status": "pending",  // Can be updated by Cloud Function after sending
+            "screenshotCount": encodedScreenshots.count,
+            "screenshotsJPEGBase64": encodedScreenshots
         ]
 
-        Task {
-            do {
-                try await db.collection("user_feedback").addDocument(data: feedbackData)
-                print("[LoggingService] Feedback saved to Firebase")
-            } catch {
-                print("[LoggingService] Failed to save feedback: \(error)")
+        do {
+            let dayRange = todayDateRange()
+            let todayCountSnapshot = try await db.collection("user_feedback")
+                .whereField("userId", isEqualTo: userId)
+                .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: dayRange.start))
+                .whereField("timestamp", isLessThan: Timestamp(date: dayRange.end))
+                .getDocuments()
+            if todayCountSnapshot.documents.count >= 3 {
+                return .dailyLimitExceeded
             }
+
+            try await db.collection("user_feedback").addDocument(data: feedbackData)
+            print("[LoggingService] Feedback saved to Firebase")
+            return .success
+        } catch {
+            print("[LoggingService] Failed to save feedback: \(error)")
+            return .failure
+        }
+    }
+
+    private func todayDateRange() -> (start: Date, end: Date) {
+        let calendar = Calendar.current
+        let now = Date()
+        let start = calendar.startOfDay(for: now)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? now.addingTimeInterval(24 * 60 * 60)
+        return (start, end)
+    }
+
+    private func encodeScreenshotsForFirestore(_ screenshots: [UIImage]) -> [String] {
+        screenshots.prefix(2).compactMap { image in
+            let resized = downscaled(image: image, maxDimension: 1280)
+            guard let data = resized.jpegData(compressionQuality: 0.45) else { return nil }
+            return data.base64EncodedString()
+        }
+    }
+
+    private func downscaled(image: UIImage, maxDimension: CGFloat) -> UIImage {
+        let size = image.size
+        let maxSide = max(size.width, size.height)
+        guard maxSide > maxDimension else { return image }
+
+        let scale = maxDimension / maxSide
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
         }
     }
 

@@ -126,6 +126,7 @@ private func speedHeatmapSegments(from points: [TrackPoint], lineWidth: CGFloat 
 }
 
 private struct TrackSegmentLegend: View {
+    @ObservedObject private var settings = SettingsManager.shared
     var showSkiing: Bool = true
     var showLift: Bool = true
 
@@ -134,7 +135,7 @@ private struct TrackSegmentLegend: View {
             if showSkiing {
                 HStack(spacing: 6) {
                     Circle().fill(Color.blue).frame(width: 8, height: 8)
-                    Text("Skiing")
+                    Text(settings.strings.stateSkiing)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -142,7 +143,7 @@ private struct TrackSegmentLegend: View {
             if showLift {
                 HStack(spacing: 6) {
                     Circle().fill(Color.yellow).frame(width: 8, height: 8)
-                    Text("Lift")
+                    Text(settings.strings.stateLift)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -847,7 +848,7 @@ struct DaySummaryView: View {
     }
 
     private var playbackUserInitials: String {
-        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? "You"
+        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? settings.strings.youLabel
         let parts = base
             .split(whereSeparator: { $0 == " " || $0 == "_" || $0 == "-" || $0 == "." })
             .filter { !$0.isEmpty }
@@ -857,7 +858,7 @@ struct DaySummaryView: View {
         if let first = parts.first?.first {
             return String(first).uppercased()
         }
-        return "U"
+        return String(settings.strings.youLabel.prefix(1)).uppercased()
     }
 
     private var playbackUserPhotoURL: URL? {
@@ -1236,7 +1237,7 @@ struct SessionDetailView: View {
     }
 
     private var sessionPlaybackUserInitials: String {
-        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? "You"
+        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? settings.strings.youLabel
         let parts = base
             .split(whereSeparator: { $0 == " " || $0 == "_" || $0 == "-" || $0 == "." })
             .filter { !$0.isEmpty }
@@ -1246,7 +1247,7 @@ struct SessionDetailView: View {
         if let first = parts.first?.first {
             return String(first).uppercased()
         }
-        return "U"
+        return String(settings.strings.youLabel.prefix(1)).uppercased()
     }
 
     private var sessionPlaybackUserPhotoURL: URL? {
@@ -1452,17 +1453,17 @@ struct SessionDetailView: View {
         VStack(spacing: 12) {
             RunMetricCard(
                 icon: "timer",
-                title: "Time",
+                title: strings.timeTitle,
                 rows: [
-                    ("Run", "#1"),
+                    (strings.runLabel, "#1"),
                     (strings.duration, run.durationFormatted),
-                    ("Window", runTimeWindow(run))
+                    (strings.windowLabel, runTimeWindow(run))
                 ]
             )
 
             RunMetricCard(
                 icon: "point.topleft.down.to.point.bottomright.curvepath",
-                title: "Distance",
+                title: strings.distance,
                 rows: [
                     (strings.distance, "\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)"),
                     (strings.elevationDrop, "\(settings.formatAltitude(run.elevationDrop)) \(units.altitudeUnit)"),
@@ -1472,7 +1473,7 @@ struct SessionDetailView: View {
 
             RunMetricCard(
                 icon: "gauge.with.needle.fill",
-                title: "Speed",
+                title: strings.speedTitle,
                 rows: [
                     (strings.maxSpeed, "\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)"),
                     (strings.avgSpeed, "\(settings.formatSpeed(run.avgSpeedKmh)) \(units.speedUnit)")
@@ -1481,7 +1482,7 @@ struct SessionDetailView: View {
 
             RunMetricCard(
                 icon: "mountain.2.fill",
-                title: "Altitude",
+                title: strings.altitudeTitle,
                 rows: [
                     (strings.startAltitude, "\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)"),
                     (strings.endAltitude, "\(settings.formatAltitude(run.endAltitude)) \(units.altitudeUnit)")
@@ -1490,7 +1491,7 @@ struct SessionDetailView: View {
 
             RunMetricCard(
                 icon: "heart.fill",
-                title: "Heart Rate",
+                title: strings.heartRateTitle,
                 rows: [
                     (strings.maxHeartRate, "\(heartRateValue(singleRunHeartRateStats.maxBPM)) \(strings.heartRateUnit)"),
                     (strings.avgHeartRate, "\(heartRateValue(singleRunHeartRateStats.avgBPM)) \(strings.heartRateUnit)")
@@ -1672,18 +1673,18 @@ struct RunDetailView: View {
 
                     RunMetricCard(
                         icon: "timer",
-                        title: "Time",
+                        title: strings.timeTitle,
                         rows: [
-                            ("Run", "#\(runIndex)"),
+                            (strings.runLabel, "#\(runIndex)"),
                             (strings.duration, run.durationFormatted),
-                            ("Window", runTimeWindow)
+                            (strings.windowLabel, runTimeWindow)
                         ]
                     )
                     .padding(.horizontal)
 
                     RunMetricCard(
                         icon: "point.topleft.down.to.point.bottomright.curvepath",
-                        title: "Distance",
+                        title: strings.distance,
                         rows: [
                             (strings.distance, "\(settings.formatDistance(run.totalDistanceKm)) \(units.distanceUnit)"),
                             (strings.elevationDrop, "\(settings.formatAltitude(run.elevationDrop)) \(units.altitudeUnit)"),
@@ -1694,7 +1695,7 @@ struct RunDetailView: View {
 
                     RunMetricCard(
                         icon: "gauge.with.needle.fill",
-                        title: "Speed",
+                        title: strings.speedTitle,
                         rows: [
                             (strings.maxSpeed, "\(settings.formatSpeed(run.maxSpeedKmh)) \(units.speedUnit)"),
                             (strings.avgSpeed, "\(settings.formatSpeed(run.avgSpeedKmh)) \(units.speedUnit)")
@@ -1704,7 +1705,7 @@ struct RunDetailView: View {
 
                     RunMetricCard(
                         icon: "mountain.2.fill",
-                        title: "Altitude",
+                        title: strings.altitudeTitle,
                         rows: [
                             (strings.startAltitude, "\(settings.formatAltitude(run.startAltitude)) \(units.altitudeUnit)"),
                             (strings.endAltitude, "\(settings.formatAltitude(run.endAltitude)) \(units.altitudeUnit)")
@@ -1714,7 +1715,7 @@ struct RunDetailView: View {
 
                     RunMetricCard(
                         icon: "heart.fill",
-                        title: "Heart Rate",
+                        title: strings.heartRateTitle,
                         rows: [
                             (strings.maxHeartRate, "\(heartRateValue(heartRateStats.maxBPM)) \(strings.heartRateUnit)"),
                             (strings.avgHeartRate, "\(heartRateValue(heartRateStats.avgBPM)) \(strings.heartRateUnit)")
@@ -1892,7 +1893,7 @@ struct RunDetailView: View {
     }
 
     private var playbackUserInitials: String {
-        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? "You"
+        let base = authService.currentUser?.displayName ?? authService.currentUser?.email ?? settings.strings.youLabel
         let parts = base
             .split(whereSeparator: { $0 == " " || $0 == "_" || $0 == "-" || $0 == "." })
             .filter { !$0.isEmpty }
@@ -1902,7 +1903,7 @@ struct RunDetailView: View {
         if let first = parts.first?.first {
             return String(first).uppercased()
         }
-        return "U"
+        return String(settings.strings.youLabel.prefix(1)).uppercased()
     }
 
     private var playbackUserPhotoURL: URL? {

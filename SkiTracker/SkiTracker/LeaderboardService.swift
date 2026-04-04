@@ -155,7 +155,7 @@ final class LeaderboardService: ObservableObject {
         } catch {
             // Fallback to local self-only ranking to avoid blocking UI in syncing state.
             let localStats = computeStats(from: localSessions)
-            let fallbackName = user.displayName ?? user.email ?? "You"
+            let fallbackName = user.displayName ?? user.email ?? SettingsManager.shared.strings.youLabel
             let friendlyMessage: String
             if let e = error as? LeaderboardError, e == .timeout {
                 friendlyMessage = SettingsManager.shared.strings.leaderboardSyncTimeout
@@ -183,7 +183,7 @@ final class LeaderboardService: ObservableObject {
             guard let self, !Task.isCancelled else { return }
 
             let fallbackStats = self.computeStats(from: localSessions)
-            let fallbackName = user.displayName ?? user.email ?? "You"
+            let fallbackName = user.displayName ?? user.email ?? SettingsManager.shared.strings.youLabel
             await MainActor.run {
                 guard self.isLoading else { return }
                 self.errorMessage = SettingsManager.shared.strings.leaderboardSyncTimeout
@@ -198,7 +198,7 @@ final class LeaderboardService: ObservableObject {
     func useLocalOnly(user: AppUser?, sessions: [TrackSession]) {
         let stats = computeStats(from: sessions)
         let uid = user?.uid ?? "local"
-        let defaultName = user?.displayName ?? user?.email ?? "You"
+        let defaultName = user?.displayName ?? user?.email ?? SettingsManager.shared.strings.youLabel
         Task { @MainActor in
             self.errorMessage = nil
             self.isLoading = false
@@ -354,17 +354,17 @@ final class LeaderboardService: ObservableObject {
             if let data = doc.data() {
                 let name = (data["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let email = data["email"] as? String
-                let displayName = (name?.isEmpty == false ? name : nil) ?? email ?? "User"
+                let displayName = (name?.isEmpty == false ? name : nil) ?? email ?? SettingsManager.shared.strings.youLabel
                 let stats = parseStats(from: data["leaderboardStats"] as? [String: Any])
                 result.append(Participant(uid: uid, displayName: displayName, stats: stats))
             } else if uid == fallbackCurrentUser.uid {
-                let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? "You"
+                let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? SettingsManager.shared.strings.youLabel
                 result.append(Participant(uid: uid, displayName: fallbackName, stats: fallbackCurrentStats))
             }
         }
 
         if result.isEmpty {
-            let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? "You"
+            let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? SettingsManager.shared.strings.youLabel
             result = [Participant(uid: fallbackCurrentUser.uid, displayName: fallbackName, stats: fallbackCurrentStats)]
         }
 

@@ -2,6 +2,7 @@ import SwiftUI
 import CoreLocation
 import StoreKit
 import MessageUI
+import PhotosUI
 
 // MARK: - SettingsView
 
@@ -19,9 +20,10 @@ struct SettingsView: View {
     @State private var feedbackText = ""
     @State private var showFeedbackSheet = false
     @State private var feedbackStatus: FeedbackStatus = .idle
+    @State private var feedbackImages: [UIImage] = []
 
     enum FeedbackStatus {
-        case idle, sending, sent, failed
+        case idle, sending, sent, failed, dailyLimitExceeded
     }
 
     var body: some View {
@@ -48,21 +50,29 @@ struct SettingsView: View {
                     }
                 }
 
-                // Language Section
+                // Language Section (menu style to save vertical space)
                 Section {
-                    ForEach(AppLanguage.allCases, id: \.self) { lang in
-                        Button {
-                            settings.language = lang
-                        } label: {
-                            HStack {
-                                Text(lang.displayName)
-                                    .foregroundColor(.primary)
-                                Spacer()
+                    Menu {
+                        ForEach(AppLanguage.allCases, id: \.self) { lang in
+                            Button {
+                                settings.language = lang
+                            } label: {
                                 if settings.language == lang {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
+                                    Label(lang.displayName, systemImage: "checkmark")
+                                } else {
+                                    Text(lang.displayName)
                                 }
                             }
+                        }
+                    } label: {
+                        HStack {
+                            Text(strings.languageLabel)
+                            Spacer()
+                            Text(settings.language.displayName)
+                                .foregroundColor(.secondary)
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
                 } header: {
@@ -93,20 +103,6 @@ struct SettingsView: View {
                     }
                 } header: {
                     Label(strings.unitsLabel, systemImage: "ruler")
-                }
-
-                // Performance Sampling Mode
-                Section {
-                    Toggle(isOn: $settings.performanceModeEnabled) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(strings.performanceModeTitle)
-                            Text(strings.performanceModeDescription)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                } header: {
-                    Label(strings.performanceSection, systemImage: "speedometer")
                 }
 
                 // Location Permission Section
@@ -159,6 +155,20 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 } header: {
                     Label(permissionSectionTitle, systemImage: "location.circle")
+                }
+
+                // Performance Sampling Mode
+                Section {
+                    Toggle(isOn: $settings.performanceModeEnabled) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(strings.performanceModeTitle)
+                            Text(strings.performanceModeDescription)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } header: {
+                    Label(strings.performanceSection, systemImage: "speedometer")
                 }
 
                 if shouldShowSupportSection {
@@ -244,6 +254,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showFeedbackSheet) {
                 FeedbackSheetView(
                     feedbackText: $feedbackText,
+                    feedbackImages: $feedbackImages,
                     feedbackStatus: $feedbackStatus,
                     onSend: sendFeedback
                 )
@@ -263,31 +274,40 @@ struct SettingsView: View {
         let userEmail = authService.currentUser?.email ?? "N/A"
         let timestamp = ISO8601DateFormatter().string(from: Date())
 
-        // Log to Firebase
-        LoggingService.shared.logFeedback(
-            userId: userId,
-            userEmail: userEmail,
-            feedback: feedbackText,
-            timestamp: timestamp
-        )
+        Task {
+            let result = await LoggingService.shared.logFeedback(
+                userId: userId,
+                userEmail: userEmail,
+                feedback: feedbackText,
+                timestamp: timestamp,
+                screenshots: feedbackImages
+            )
 
-        // Mark as sent (feedback is logged to Firebase)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            feedbackStatus = .sent
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                showFeedbackSheet = false
-                feedbackText = ""
-                feedbackStatus = .idle
+            await MainActor.run {
+                switch result {
+                case .success:
+                    feedbackStatus = .sent
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        showFeedbackSheet = false
+                        feedbackText = ""
+                        feedbackImages = []
+                        feedbackStatus = .idle
+                    }
+                case .dailyLimitExceeded:
+                    feedbackStatus = .dailyLimitExceeded
+                case .failure:
+                    feedbackStatus = .failed
+                }
             }
         }
     }
 
     private var permissionSectionTitle: String {
-        settings.language == .chinese ? "定位权限" : "Location Permission"
+        settings.strings.locationPermissionSectionTitle
     }
 
     private var requestAlwaysText: String {
-        settings.language == .chinese ? "申请“始终允许”" : "Request Always Access"
+        settings.strings.requestAlwaysAccess
     }
 
     private var permissionStatusText: String {
@@ -331,10 +351,8 @@ struct SettingsView: View {
 
     private func unitDisplayName(_ unit: UnitSystem) -> String {
         switch settings.language {
-        case .chinese:
-            return unit == .metric ? "公制" : "英制"
-        case .english, .spanish, .japanese, .korean, .french, .german, .italian:
-            return unit == .metric ? "Metric" : "Imperial"
+        case .chinese, .english, .spanish, .japanese, .korean, .french, .german, .italian:
+            return unit == .metric ? settings.strings.metricLabel : settings.strings.imperialLabel
         }
     }
 
@@ -383,11 +401,13 @@ struct SettingsView: View {
 
 struct FeedbackSheetView: View {
     @Binding var feedbackText: String
+    @Binding var feedbackImages: [UIImage]
     @Binding var feedbackStatus: SettingsView.FeedbackStatus
     let onSend: () -> Void
 
     @ObservedObject var settings = SettingsManager.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedScreenshotItems: [PhotosPickerItem] = []
 
     var body: some View {
         let strings = settings.strings
@@ -417,6 +437,51 @@ struct FeedbackSheetView: View {
                     )
                     .disabled(feedbackStatus == .sending || feedbackStatus == .sent)
 
+                VStack(alignment: .leading, spacing: 10) {
+                    PhotosPicker(
+                        selection: $selectedScreenshotItems,
+                        maxSelectionCount: 2,
+                        matching: .images
+                    ) {
+                        Label(
+                            strings.feedbackAddScreenshots,
+                            systemImage: "photo.on.rectangle.angled"
+                        )
+                        .font(.subheadline)
+                    }
+                    .disabled(feedbackStatus == .sending || feedbackStatus == .sent)
+
+                    if !feedbackImages.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(Array(feedbackImages.enumerated()), id: \.offset) { index, image in
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 108, height: 108)
+                                            .clipped()
+                                            .cornerRadius(10)
+
+                                        Button {
+                                            feedbackImages.remove(at: index)
+                                            if index < selectedScreenshotItems.count {
+                                                selectedScreenshotItems.remove(at: index)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.white)
+                                                .background(Color.black.opacity(0.5))
+                                                .clipShape(Circle())
+                                        }
+                                        .padding(6)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Status message
                 if feedbackStatus == .sent {
                     HStack {
@@ -432,6 +497,14 @@ struct FeedbackSheetView: View {
                             .foregroundColor(.red)
                         Text(strings.feedbackFailed)
                             .foregroundColor(.red)
+                    }
+                    .font(.subheadline)
+                } else if feedbackStatus == .dailyLimitExceeded {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(strings.feedbackDailyLimitExceeded)
+                            .foregroundColor(.orange)
                     }
                     .font(.subheadline)
                 }
@@ -465,6 +538,20 @@ struct FeedbackSheetView: View {
             .padding(.horizontal)
             .navigationTitle(strings.feedbackTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: selectedScreenshotItems) { _, newItems in
+                Task {
+                    var loaded: [UIImage] = []
+                    for item in newItems.prefix(2) {
+                        if let data = try? await item.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            loaded.append(image)
+                        }
+                    }
+                    await MainActor.run {
+                        feedbackImages = loaded
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(strings.close) {
@@ -478,7 +565,8 @@ struct FeedbackSheetView: View {
     private var canSend: Bool {
         !feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         feedbackStatus != .sending &&
-        feedbackStatus != .sent
+        feedbackStatus != .sent &&
+        feedbackStatus != .dailyLimitExceeded
     }
 }
 

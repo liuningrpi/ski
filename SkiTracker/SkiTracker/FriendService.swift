@@ -225,7 +225,8 @@ final class FriendService: ObservableObject {
                 .setData(["hiddenInCompetition": hidden], merge: true)
             await refreshFriends(uid: currentUserUID)
             await MainActor.run {
-                statusMessage = hidden ? "Friend hidden from competition." : "Friend shown in competition."
+                let strings = SettingsManager.shared.strings
+                statusMessage = hidden ? strings.friendHiddenFromCompetition : strings.friendShownInCompetition
                 isLoading = false
             }
         } catch {
@@ -252,7 +253,7 @@ final class FriendService: ObservableObject {
 
             await refreshFriends(uid: currentUserUID)
             await MainActor.run {
-                statusMessage = "Friend removed."
+                statusMessage = SettingsManager.shared.strings.friendRemoved
                 isLoading = false
             }
         } catch {

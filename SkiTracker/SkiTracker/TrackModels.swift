@@ -56,6 +56,7 @@ struct TrackSession: Codable, Identifiable {
     let id: UUID
     let startedAt: Date
     var endedAt: Date?
+    var resortName: String?
     var points: [TrackPoint]
     let deviceInfo: String?
     var segments: [RunSegment]
@@ -64,6 +65,7 @@ struct TrackSession: Codable, Identifiable {
         self.id = UUID()
         self.startedAt = startedAt
         self.endedAt = nil
+        self.resortName = nil
         self.points = []
         self.deviceInfo = deviceInfo
         self.segments = []
@@ -74,6 +76,7 @@ struct TrackSession: Codable, Identifiable {
         self.id = id
         self.startedAt = startedAt
         self.endedAt = nil
+        self.resortName = nil
         self.points = []
         self.deviceInfo = deviceInfo
         self.segments = []

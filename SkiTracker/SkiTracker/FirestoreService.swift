@@ -53,6 +53,7 @@ final class FirestoreService: ObservableObject {
         var data: [String: Any] = [
             "id": session.id.uuidString,
             "startedAt": Timestamp(date: session.startedAt),
+            "resortName": session.resortName ?? "",
             "deviceInfo": session.deviceInfo ?? "",
             "totalDistanceKm": session.totalDistanceKm,
             "maxSpeedKmh": session.maxSpeedKmh,
@@ -193,10 +194,12 @@ final class FirestoreService: ObservableObject {
 
         let startedAt = startedAtTimestamp.dateValue()
         let endedAt = (data["endedAt"] as? Timestamp)?.dateValue()
+        let resortName = (data["resortName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let deviceInfo = data["deviceInfo"] as? String
 
         var session = TrackSession(id: id, startedAt: startedAt, deviceInfo: deviceInfo)
         session.endedAt = endedAt
+        session.resortName = resortName?.isEmpty == false ? resortName : nil
 
         // Parse points
         if let pointsData = data["points"] as? [[String: Any]] {

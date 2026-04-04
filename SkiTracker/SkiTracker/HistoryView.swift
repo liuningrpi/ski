@@ -229,6 +229,42 @@ struct DayGroup: Identifiable {
     }
 }
 
+struct ResortGroup: Identifiable {
+    let id: String
+    let resortName: String
+    let sessions: [TrackSession]
+
+    var totalDistance: Double {
+        sessions.reduce(0) { $0 + $1.totalDistanceKm }
+    }
+
+    var runCount: Int {
+        sessions.reduce(0) { $0 + $1.runCount }
+    }
+
+    var liftCount: Int {
+        sessions.reduce(0) { $0 + $1.liftCount }
+    }
+
+    var totalDuration: TimeInterval {
+        sessions.reduce(0) { $0 + $1.durationSeconds }
+    }
+
+    var totalDescent: Double {
+        sessions.reduce(0) { $0 + $1.totalVerticalDrop }
+    }
+
+    var maxSpeed: Double {
+        sessions.map { $0.maxSpeedKmh }.max() ?? 0
+    }
+}
+
+private enum HistoryGroupingMode: String, CaseIterable, Identifiable {
+    case byDate
+    case byResort
+    var id: String { rawValue }
+}
+
 // MARK: - HistoryView
 
 /// Displays all saved sessions grouped by day.
@@ -241,6 +277,7 @@ struct HistoryView: View {
     @State private var selectedSession: TrackSession?
     @State private var selectedDayGroup: DayGroup?
     @State private var showDeleteAllConfirm = false
+    @State private var groupingMode: HistoryGroupingMode = .byDate
 
     private var dayGroups: [DayGroup] {
         let calendar = Calendar.current
@@ -256,6 +293,25 @@ struct HistoryView: View {
                 sessions: sessions.sorted { $0.startedAt > $1.startedAt }
             )
         }.sorted { $0.date > $1.date }
+    }
+
+    private var resortGroups: [ResortGroup] {
+        let strings = settings.strings
+        let grouped = Dictionary(grouping: sessionStore.sessions) { session in
+            let raw = session.resortName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let raw, !raw.isEmpty {
+                return raw
+            }
+            return strings.unknownResort
+        }
+        return grouped.map { (name, sessions) in
+            ResortGroup(
+                id: name,
+                resortName: name,
+                sessions: sessions.sorted { $0.startedAt > $1.startedAt }
+            )
+        }
+        .sorted { $0.sessions.first?.startedAt ?? .distantPast > $1.sessions.first?.startedAt ?? .distantPast }
     }
 
     var body: some View {
@@ -308,90 +364,152 @@ struct HistoryView: View {
         let units = settings.unitSystem
 
         List {
+            Section {
+                Picker("", selection: $groupingMode) {
+                    Text(strings.historyGroupByDate).tag(HistoryGroupingMode.byDate)
+                    Text(strings.historyGroupByResort).tag(HistoryGroupingMode.byResort)
+                }
+                .pickerStyle(.segmented)
+            }
+
             if dayGroups.isEmpty {
                 Section {
                     emptyState
                 }
             }
 
-            ForEach(dayGroups) { dayGroup in
-                Section {
-                    // Day summary button
-                    Button {
-                        selectedDayGroup = dayGroup
-                    } label: {
-                        HStack {
-                            Image(systemName: "chart.bar.fill")
-                                .foregroundColor(.blue)
-                            Text(strings.daySummary)
-                                .foregroundColor(.primary)
-                            Spacer()
-                            Text("\(dayGroup.sessions.count) \(strings.sessionsCount)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                    }
-
-                    // Individual runs
-                    ForEach(dayGroup.sessions) { session in
+            if groupingMode == .byDate {
+                ForEach(dayGroups) { dayGroup in
+                    Section {
                         Button {
-                            selectedSession = session
+                            selectedDayGroup = dayGroup
                         } label: {
                             HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(session.startedAt, style: .time)
-                                        if let end = session.endedAt {
-                                            Text("-")
-                                            Text(end, style: .time)
-                                        }
-                                    }
-                                    .font(.subheadline)
+                                Image(systemName: "chart.bar.fill")
+                                    .foregroundColor(.blue)
+                                Text(strings.daySummary)
                                     .foregroundColor(.primary)
-
-                                    Text(session.durationFormatted)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-
                                 Spacer()
-
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    Text("\(settings.formatDistance(session.totalDistanceKm)) \(units.distanceUnit)")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.primary)
-                                    Text("\(settings.formatSpeed(session.maxSpeedKmh)) \(units.speedUnit)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-
+                                Text("\(dayGroup.sessions.count) \(strings.sessionsCount)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 4)
                         }
+
+                        ForEach(dayGroup.sessions) { session in
+                            sessionRow(session: session, units: units, showDate: false)
+                        }
+                        .onDelete { offsets in
+                            deleteSession(from: dayGroup, at: offsets)
+                        }
+                    } header: {
+                        Text(dayGroup.date, style: .date)
+                            .font(.headline)
                     }
-                    .onDelete { offsets in
-                        deleteSession(from: dayGroup, at: offsets)
+                }
+            } else {
+                ForEach(resortGroups) { resortGroup in
+                    Section {
+                        HStack {
+                            Image(systemName: "chart.bar.fill")
+                                .foregroundColor(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(strings.resortSummary)
+                                    .foregroundColor(.primary)
+                                Text("\(resortGroup.runCount) \(strings.runsCount) · \(resortGroup.liftCount) \(strings.liftsCompleted)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("\(settings.formatDistance(resortGroup.totalDistance)) \(units.distanceUnit)")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.primary)
+                                Text("\(settings.formatSpeed(resortGroup.maxSpeed)) \(units.speedUnit)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+
+                        ForEach(resortGroup.sessions) { session in
+                            sessionRow(session: session, units: units, showDate: true)
+                        }
+                        .onDelete { offsets in
+                            deleteSession(from: resortGroup, at: offsets)
+                        }
+                    } header: {
+                        Text(resortGroup.resortName)
+                            .font(.headline)
                     }
-                } header: {
-                    Text(dayGroup.date, style: .date)
-                        .font(.headline)
                 }
             }
         }
         .listStyle(.insetGrouped)
     }
 
+    @ViewBuilder
+    private func sessionRow(session: TrackSession, units: UnitSystem, showDate: Bool) -> some View {
+        Button {
+            selectedSession = session
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        if showDate {
+                            Text(session.startedAt, style: .date)
+                            Text("·")
+                                .foregroundColor(.secondary)
+                        }
+                        Text(session.startedAt, style: .time)
+                        if let end = session.endedAt {
+                            Text("-")
+                            Text(end, style: .time)
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+
+                    Text(session.durationFormatted)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(settings.formatDistance(session.totalDistanceKm)) \(units.distanceUnit)")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    Text("\(settings.formatSpeed(session.maxSpeedKmh)) \(units.speedUnit)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
     private func deleteSession(from dayGroup: DayGroup, at offsets: IndexSet) {
         for index in offsets {
             let session = dayGroup.sessions[index]
+            sessionStore.delete(session)
+        }
+    }
+
+    private func deleteSession(from resortGroup: ResortGroup, at offsets: IndexSet) {
+        for index in offsets {
+            let session = resortGroup.sessions[index]
             sessionStore.delete(session)
         }
     }

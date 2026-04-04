@@ -29,6 +29,12 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Error message for UI display
     @Published var errorMessage: String?
 
+    /// Current detected ski resort nearby.
+    @Published var currentResortName: String?
+
+    /// Transient banner message when entering a resort area.
+    @Published var resortWelcomeMessage: String?
+
     /// Run segmenter for automatic run detection
     @Published var segmenter = RunSegmenter()
 
@@ -46,6 +52,19 @@ final class LocationTracker: NSObject, ObservableObject {
 
     /// Balanced update frequency for outdoor skiing.
     private let defaultDistanceFilter: Double = 5.0
+
+    /// Resort detection range from current point.
+    private let resortSearchRadiusMeters: Double = 12_000
+
+    /// Only re-check resort when user has moved this far.
+    private let resortRecheckDistanceMeters: Double = 900
+
+    /// Keep current resort sticky until user is clearly far away.
+    private let resortExitDistanceMeters: Double = 15_000
+
+    private var lastResortCheckLocation: CLLocation?
+    private var currentResortMatch: SkiResortMatch?
+    private var lastWelcomedResortName: String?
 
     // MARK: - Init
 
@@ -101,6 +120,10 @@ final class LocationTracker: NSObject, ObservableObject {
         trackingStartDate = Date()
         isTracking = true
         isPaused = false
+        currentResortName = nil
+        resortWelcomeMessage = nil
+        currentResortMatch = nil
+        lastResortCheckLocation = nil
         errorMessage = nil
         configureBackgroundUpdates()
         locationManager.startUpdatingLocation()
@@ -154,6 +177,7 @@ final class LocationTracker: NSObject, ObservableObject {
             deviceInfo: UIDevice.current.model
         )
         session.endedAt = Date()
+        session.resortName = currentResortName
         session.points = locations.map { TrackPoint(from: $0) }
         session.segments = segmenter.segments
         return session
@@ -189,6 +213,49 @@ final class LocationTracker: NSObject, ObservableObject {
         } else {
             // High speed skiing: default 2m; Performance mode pushes to 1m for peak capture.
             locationManager.distanceFilter = performanceMode ? 1.0 : 2.0
+        }
+    }
+
+    private func updateResortDetection(using location: CLLocation) {
+        if let previousCheck = lastResortCheckLocation {
+            let moved = location.distance(from: previousCheck)
+            if moved < resortRecheckDistanceMeters {
+                if let current = currentResortMatch {
+                    let currentCenter = CLLocation(latitude: current.resort.lat, longitude: current.resort.lon)
+                    if location.distance(from: currentCenter) < resortExitDistanceMeters {
+                        return
+                    }
+                } else {
+                    return
+                }
+            }
+        }
+
+        lastResortCheckLocation = location
+
+        guard let match = SkiResortLocator.shared.nearest(
+            to: location.coordinate,
+            maxDistanceMeters: resortSearchRadiusMeters
+        ) else {
+            currentResortMatch = nil
+            currentResortName = nil
+            return
+        }
+
+        currentResortMatch = match
+        currentResortName = match.resort.name
+
+        if lastWelcomedResortName != match.resort.name {
+            lastWelcomedResortName = match.resort.name
+            let message = SettingsManager.shared.strings.welcomeToResortArea(match.resort.name)
+            resortWelcomeMessage = message
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+                guard let self else { return }
+                if self.resortWelcomeMessage == message {
+                    self.resortWelcomeMessage = nil
+                }
+            }
         }
     }
 }
@@ -235,6 +302,7 @@ extension LocationTracker: CLLocationManagerDelegate {
             DispatchQueue.main.async {
                 self.locations.append(location)
                 self.currentLocation = location
+                self.updateResortDetection(using: location)
             }
         }
     }

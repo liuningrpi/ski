@@ -403,6 +403,22 @@ struct LocalizedStrings {
         tr(en: "sessions", zh: "次记录", es: "sesiones", ja: "セッション", ko: "세션", fr: "sessions", de: "Sitzungen", it: "sessioni")
     }
 
+    var historyGroupByDate: String {
+        tr(en: "By Date", zh: "按日期", es: "Por fecha", ja: "日付別", ko: "날짜별", fr: "Par date", de: "Nach Datum", it: "Per data")
+    }
+
+    var historyGroupByResort: String {
+        tr(en: "By Resort", zh: "按雪场", es: "Por estacion", ja: "スキー場別", ko: "리조트별", fr: "Par station", de: "Nach Skigebiet", it: "Per comprensorio")
+    }
+
+    var resortSummary: String {
+        tr(en: "Resort Summary", zh: "雪场总结", es: "Resumen de estacion", ja: "スキー場サマリー", ko: "리조트 요약", fr: "Resume station", de: "Skigebiets-Zusammenfassung", it: "Riepilogo comprensorio")
+    }
+
+    var unknownResort: String {
+        tr(en: "Unknown Resort", zh: "未知雪场", es: "Estacion desconocida", ja: "不明なスキー場", ko: "알 수 없는 리조트", fr: "Station inconnue", de: "Unbekanntes Skigebiet", it: "Comprensorio sconosciuto")
+    }
+
     // Authentication
     var signIn: String {
         tr(en: "Sign In", zh: "登录", es: "Iniciar sesion", ja: "サインイン", ko: "로그인", fr: "Se connecter", de: "Anmelden", it: "Accedi")
@@ -740,6 +756,27 @@ struct LocalizedStrings {
         language == .chinese
             ? "正在等待 Apple Watch 心率同步，请确认手表佩戴正常，并已在 iPhone 的「健康」里允许本应用读取心率。"
             : "Waiting for Apple Watch heart-rate sync. Confirm watch is worn and Health permissions allow heart-rate read for this app."
+    }
+
+    func welcomeToResortArea(_ resort: String) -> String {
+        switch language {
+        case .english:
+            return "Welcome to the \(resort) area"
+        case .chinese:
+            return "欢迎来到\(resort)区域"
+        case .spanish:
+            return "Bienvenido al area de \(resort)"
+        case .japanese:
+            return "\(resort)エリアへようこそ"
+        case .korean:
+            return "\(resort) 지역에 오신 것을 환영합니다"
+        case .french:
+            return "Bienvenue dans la zone de \(resort)"
+        case .german:
+            return "Willkommen im Gebiet \(resort)"
+        case .italian:
+            return "Benvenuto nell'area di \(resort)"
+        }
     }
 
     // Feedback

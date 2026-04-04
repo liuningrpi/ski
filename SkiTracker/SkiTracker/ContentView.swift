@@ -39,6 +39,23 @@ struct ContentView: View {
                 mapLayer
                     .ignoresSafeArea(edges: .top)
 
+                if tracker.isTracking, let message = tracker.resortWelcomeMessage {
+                    VStack {
+                        Text(message)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.green.opacity(0.9))
+                            .clipShape(Capsule())
+                            .padding(.top, 8)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.easeInOut(duration: 0.2), value: message)
+                }
+
                 if tracker.isTracking && !isLiveMapAutoFollow {
                     VStack {
                         HStack {

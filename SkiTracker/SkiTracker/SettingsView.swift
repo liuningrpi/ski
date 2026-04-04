@@ -333,7 +333,7 @@ struct SettingsView: View {
         switch settings.language {
         case .chinese:
             return unit == .metric ? "公制" : "英制"
-        case .english:
+        case .english, .spanish, .japanese, .korean, .french, .german, .italian:
             return unit == .metric ? "Metric" : "Imperial"
         }
     }

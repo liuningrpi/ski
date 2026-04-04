@@ -6,11 +6,23 @@ import Combine
 enum AppLanguage: String, CaseIterable, Codable {
     case english = "en"
     case chinese = "zh"
+    case spanish = "es"
+    case japanese = "ja"
+    case korean = "ko"
+    case french = "fr"
+    case german = "de"
+    case italian = "it"
 
     var displayName: String {
         switch self {
         case .english: return "English"
         case .chinese: return "中文"
+        case .spanish: return "Español"
+        case .japanese: return "日本語"
+        case .korean: return "한국어"
+        case .french: return "Français"
+        case .german: return "Deutsch"
+        case .italian: return "Italiano"
         }
     }
 }
@@ -731,7 +743,23 @@ final class SettingsManager: ObservableObject {
         } else {
             // Default based on system locale
             let systemLang = Locale.current.language.languageCode?.identifier ?? "en"
-            self.language = systemLang.starts(with: "zh") ? .chinese : .english
+            if systemLang.starts(with: "zh") {
+                self.language = .chinese
+            } else if systemLang.starts(with: "es") {
+                self.language = .spanish
+            } else if systemLang.starts(with: "ja") {
+                self.language = .japanese
+            } else if systemLang.starts(with: "ko") {
+                self.language = .korean
+            } else if systemLang.starts(with: "fr") {
+                self.language = .french
+            } else if systemLang.starts(with: "de") {
+                self.language = .german
+            } else if systemLang.starts(with: "it") {
+                self.language = .italian
+            } else {
+                self.language = .english
+            }
         }
 
         if let unitRaw = UserDefaults.standard.string(forKey: "unit_system"),

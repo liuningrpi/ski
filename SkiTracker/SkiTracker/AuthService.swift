@@ -18,9 +18,21 @@ struct AppUser: Codable, Equatable {
     let provider: String // "apple" or "google"
 
     init(from firebaseUser: FirebaseAuth.User, provider: String) {
+        let rawDisplayName = firebaseUser.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedDisplayName: String? = {
+            if let rawDisplayName, !rawDisplayName.isEmpty {
+                return rawDisplayName
+            }
+            guard let email = firebaseUser.email else { return nil }
+            if email.localizedCaseInsensitiveContains("privaterelay.appleid.com") {
+                return "Skier"
+            }
+            return nil
+        }()
+
         self.uid = firebaseUser.uid
         self.email = firebaseUser.email
-        self.displayName = firebaseUser.displayName
+        self.displayName = resolvedDisplayName
         self.photoURL = firebaseUser.photoURL?.absoluteString
         self.provider = provider
     }
@@ -246,8 +258,29 @@ final class AuthService: NSObject, ObservableObject {
                     self?.errorMessage = error.localizedDescription
                     print("[AppleSignIn] Firebase signIn error domain=\(nsError.domain) code=\(nsError.code) message=\(nsError.localizedDescription) userInfo=\(nsError.userInfo)")
                 } else {
+                    self?.applyPreferredAppleDisplayName(from: appleIDCredential)
                     print("[AppleSignIn] Firebase signIn success")
                 }
+            }
+        }
+    }
+
+    private func applyPreferredAppleDisplayName(from credential: ASAuthorizationAppleIDCredential) {
+        guard let user = Auth.auth().currentUser else { return }
+
+        let formatter = PersonNameComponentsFormatter()
+        let formattedName = credential.fullName.flatMap { formatter.string(from: $0).trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        guard let formattedName, !formattedName.isEmpty else { return }
+        guard (user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) else { return }
+
+        let request = user.createProfileChangeRequest()
+        request.displayName = formattedName
+        request.commitChanges { error in
+            if let error {
+                print("[AppleSignIn] failed to set display name: \(error.localizedDescription)")
+            } else {
+                print("[AppleSignIn] display name updated to '\(formattedName)'")
             }
         }
     }

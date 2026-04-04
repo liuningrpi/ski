@@ -22,7 +22,7 @@ struct FriendsView: View {
                 if let currentUser = authService.currentUser {
                     inviteSection(user: currentUser)
                     addFriendSection(user: currentUser)
-                    friendListSection
+                    friendListSection(currentUser: currentUser)
                 } else {
                     Section {
                         Text(strings.signInToManageFriends)
@@ -140,7 +140,7 @@ struct FriendsView: View {
     }
 
     @ViewBuilder
-    private var friendListSection: some View {
+    private func friendListSection(currentUser: AppUser) -> some View {
         let strings = settings.strings
 
         Section(strings.friends) {
@@ -164,6 +164,36 @@ struct FriendsView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
+                        if friend.hiddenInCompetition {
+                            Text(settings.language == .chinese ? "已从排行榜隐藏" : "Hidden from competition")
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            Task {
+                                await friendService.removeFriend(friendUID: friend.uid, currentUserUID: currentUser.uid)
+                            }
+                        } label: {
+                            Label(settings.language == .chinese ? "删除" : "Delete", systemImage: "trash")
+                        }
+
+                        Button {
+                            Task {
+                                await friendService.setFriendHiddenInCompetition(
+                                    friendUID: friend.uid,
+                                    currentUserUID: currentUser.uid,
+                                    hidden: !friend.hiddenInCompetition
+                                )
+                            }
+                        } label: {
+                            let title = friend.hiddenInCompetition
+                                ? (settings.language == .chinese ? "取消隐藏" : "Unhide")
+                                : (settings.language == .chinese ? "隐藏" : "Hide")
+                            Label(title, systemImage: friend.hiddenInCompetition ? "eye" : "eye.slash")
+                        }
+                        .tint(friend.hiddenInCompetition ? .green : .orange)
                     }
                 }
             }

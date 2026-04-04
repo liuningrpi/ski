@@ -7,6 +7,7 @@ struct LoginView: View {
 
     @ObservedObject var authService = AuthService.shared
     @ObservedObject var settings = SettingsManager.shared
+    @EnvironmentObject var sessionStore: SessionStore
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -106,6 +107,7 @@ struct LoginView: View {
                     if let user = authService.currentUser {
                         Task {
                             await FirestoreService.shared.saveUserProfile(user)
+                            await FirestoreService.shared.uploadAllSessions(sessionStore.sessions, uid: user.uid)
                             await FriendService.shared.processPendingInviteIfNeeded(currentUser: user)
                         }
                     }

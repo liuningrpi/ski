@@ -14,11 +14,9 @@ struct ContentView: View {
     @State private var showHistory = false
     @State private var showLeaderboard = false
     @State private var showSettings = false
-    @State private var showSquad = false
     @State private var showStopConfirm = false
     @State private var liveSession: TrackSession?
     @ObservedObject private var watchHeartRateReceiver = WatchHeartRateReceiver.shared
-    @ObservedObject private var squadService = SquadService.shared
 
     /// Timer to refresh stats every second
     @State private var statsTimer: Timer?
@@ -97,11 +95,6 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "clock.arrow.circlepath")
                         }
-                        Button {
-                            showSquad = true
-                        } label: {
-                            Image(systemName: "person.3.fill")
-                        }
                     }
                 }
             }
@@ -115,10 +108,6 @@ struct ContentView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
-            .sheet(isPresented: $showSquad) {
-                SquadView()
-                    .environmentObject(tracker)
-            }
             .alert(strings.stopConfirmTitle, isPresented: $showStopConfirm) {
                 Button(strings.continueRecording, role: .cancel) { }
                 Button(strings.stopAndSave, role: .destructive) {
@@ -129,9 +118,6 @@ struct ContentView: View {
             }
             .onAppear {
                 tracker.segmenter.onSegmentCompleted = nil
-                Task {
-                    await squadService.bootstrapIfNeeded()
-                }
             }
             .onDisappear {
                 statsTimer?.invalidate()
@@ -143,27 +129,6 @@ struct ContentView: View {
                 guard tracker.isTracking else { return }
                 guard stats.maxBPM != nil || stats.avgBPM != nil else { return }
                 liveHeartRateStats = stats
-            }
-            .onReceive(tracker.$currentLocation) { location in
-                squadService.handleTrackerUpdate(
-                    location: location,
-                    isTracking: tracker.isTracking,
-                    isPaused: tracker.isPaused
-                )
-            }
-            .onChange(of: tracker.isTracking) { _, isTracking in
-                squadService.handleTrackerUpdate(
-                    location: tracker.currentLocation,
-                    isTracking: isTracking,
-                    isPaused: tracker.isPaused
-                )
-            }
-            .onChange(of: tracker.isPaused) { _, isPaused in
-                squadService.handleTrackerUpdate(
-                    location: tracker.currentLocation,
-                    isTracking: tracker.isTracking,
-                    isPaused: isPaused
-                )
             }
         }
     }
@@ -581,6 +546,20 @@ struct ContentView: View {
         let session = tracker.buildSession()
         guard session.points.count >= 2 else { return }
         sessionStore.save(session)
+
+        // Auto-sync newly recorded session for signed-in users.
+        if let user = AuthService.shared.currentUser {
+            Task {
+                do {
+                    try await FirestoreService.shared.uploadSession(session, uid: user.uid)
+                } catch {
+                    await MainActor.run {
+                        FirestoreService.shared.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+        }
+
         refreshLeaderboard(newSessions: [session])
     }
 

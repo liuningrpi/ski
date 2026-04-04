@@ -10,6 +10,7 @@ struct AppFriend: Identifiable {
     let displayName: String
     let email: String?
     let addedAt: Date?
+    let hiddenInCompetition: Bool
 }
 
 // MARK: - Friend Service
@@ -80,13 +81,15 @@ final class FriendService: ObservableObject {
                 let displayName = (data["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let email = data["email"] as? String
                 let addedAt = (data["addedAt"] as? Timestamp)?.dateValue()
+                let hiddenInCompetition = data["hiddenInCompetition"] as? Bool ?? false
                 let name = (displayName?.isEmpty == false ? displayName : nil) ?? email ?? "User"
                 return AppFriend(
                     id: doc.documentID,
                     uid: doc.documentID,
                     displayName: name,
                     email: email,
-                    addedAt: addedAt
+                    addedAt: addedAt,
+                    hiddenInCompetition: hiddenInCompetition
                 )
             }
             .sorted { lhs, rhs in
@@ -172,6 +175,7 @@ final class FriendService: ObservableObject {
                 "displayName": finalTargetName,
                 "email": targetEmail ?? "",
                 "accepted": true,
+                "hiddenInCompetition": false,
                 "addedAt": FieldValue.serverTimestamp(),
                 "source": source
             ], forDocument: currentToFriendRef, merge: true)
@@ -181,6 +185,7 @@ final class FriendService: ObservableObject {
                 "displayName": currentName,
                 "email": currentEmail ?? "",
                 "accepted": true,
+                "hiddenInCompetition": false,
                 "addedAt": FieldValue.serverTimestamp(),
                 "source": source
             ], forDocument: friendToCurrentRef, merge: true)
@@ -205,6 +210,56 @@ final class FriendService: ObservableObject {
                 self.isLoading = false
             }
             return false
+        }
+    }
+
+    func setFriendHiddenInCompetition(friendUID: String, currentUserUID: String, hidden: Bool) async {
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+
+        do {
+            try await friendsCollection(uid: currentUserUID)
+                .document(friendUID)
+                .setData(["hiddenInCompetition": hidden], merge: true)
+            await refreshFriends(uid: currentUserUID)
+            await MainActor.run {
+                statusMessage = hidden ? "Friend hidden from competition." : "Friend shown in competition."
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+        }
+    }
+
+    func removeFriend(friendUID: String, currentUserUID: String) async {
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+
+        do {
+            let batch = db.batch()
+            let currentDoc = friendsCollection(uid: currentUserUID).document(friendUID)
+            let reverseDoc = friendsCollection(uid: friendUID).document(currentUserUID)
+            batch.deleteDocument(currentDoc)
+            batch.deleteDocument(reverseDoc)
+            try await batch.commit()
+
+            await refreshFriends(uid: currentUserUID)
+            await MainActor.run {
+                statusMessage = "Friend removed."
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
         }
     }
 

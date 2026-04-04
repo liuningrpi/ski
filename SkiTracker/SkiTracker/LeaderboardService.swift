@@ -324,7 +324,8 @@ final class LeaderboardService: ObservableObject {
         let snapshot = try await friendsCollection(uid: uid).getDocuments()
         let directFriendUIDs = snapshot.documents.compactMap { doc -> String? in
             let accepted = doc.data()["accepted"] as? Bool ?? true
-            return accepted ? doc.documentID : nil
+            let hiddenInCompetition = doc.data()["hiddenInCompetition"] as? Bool ?? false
+            return (accepted && !hiddenInCompetition) ? doc.documentID : nil
         }
 
         guard !directFriendUIDs.isEmpty else { return [] }

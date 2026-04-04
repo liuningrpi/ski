@@ -66,7 +66,7 @@ struct SettingsView: View {
                         }
                     } label: {
                         HStack {
-                            Text(strings.languageLabel)
+                            Text("Language")
                             Spacer()
                             Text(settings.language.displayName)
                                 .foregroundColor(.secondary)
@@ -76,7 +76,7 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Label(strings.languageLabel, systemImage: "globe")
+                    Label("Language", systemImage: "globe")
                 }
 
                 // Units Section

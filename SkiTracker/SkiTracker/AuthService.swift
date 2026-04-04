@@ -6,6 +6,7 @@ import CryptoKit
 import FirebaseCore
 import FirebaseAuth
 import GoogleSignIn
+import os.log
 
 // MARK: - User Model
 
@@ -30,6 +31,7 @@ struct AppUser: Codable, Equatable {
 final class AuthService: NSObject, ObservableObject {
 
     static let shared = AuthService()
+    private static let logger = Logger(subsystem: "com.nliu.SkiTracker", category: "AuthService")
 
     let objectWillChange = ObservableObjectPublisher()
 
@@ -77,25 +79,30 @@ final class AuthService: NSObject, ObservableObject {
         request.nonce = sha256(nonce)
         isSigningIn = true
         errorMessage = nil
+        print("[AppleSignIn] configure request nonce_set=true")
     }
 
     func handleAppleSignInResult(_ result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let authorization):
+            print("[AppleSignIn] completion success from SignInWithAppleButton")
             guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
                 DispatchQueue.main.async { [weak self] in
                     self?.isSigningIn = false
                     self?.errorMessage = "Invalid Apple credential"
                 }
+                print("[AppleSignIn] invalid credential type in completion")
                 return
             }
             signInWithFirebase(appleIDCredential: appleIDCredential)
         case .failure(let error):
+            print("[AppleSignIn] completion failure from SignInWithAppleButton: \(error)")
             handleAppleSignInError(error)
         }
     }
 
     func signInWithApple() {
+        print("[AppleSignIn] signInWithApple() invoked")
         let appleIDProvider = ASAuthorizationAppleIDProvider()
         let request = appleIDProvider.createRequest()
         configureAppleSignInRequest(request)
@@ -197,11 +204,13 @@ final class AuthService: NSObject, ObservableObject {
     }
 
     private func signInWithFirebase(appleIDCredential: ASAuthorizationAppleIDCredential) {
+        print("[AppleSignIn] exchanging Apple credential with Firebase")
         guard let nonce = self.currentNonce else {
             DispatchQueue.main.async { [weak self] in
                 self?.isSigningIn = false
                 self?.errorMessage = "Invalid state: nonce not found"
             }
+            print("[AppleSignIn] missing nonce")
             return
         }
 
@@ -210,6 +219,7 @@ final class AuthService: NSObject, ObservableObject {
                 self?.isSigningIn = false
                 self?.errorMessage = "Unable to fetch identity token"
             }
+            print("[AppleSignIn] missing identity token")
             return
         }
 
@@ -218,6 +228,7 @@ final class AuthService: NSObject, ObservableObject {
                 self?.isSigningIn = false
                 self?.errorMessage = "Unable to serialize token string"
             }
+            print("[AppleSignIn] cannot serialize identity token")
             return
         }
 
@@ -231,7 +242,11 @@ final class AuthService: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self?.isSigningIn = false
                 if let error = error {
+                    let nsError = error as NSError
                     self?.errorMessage = error.localizedDescription
+                    print("[AppleSignIn] Firebase signIn error domain=\(nsError.domain) code=\(nsError.code) message=\(nsError.localizedDescription) userInfo=\(nsError.userInfo)")
+                } else {
+                    print("[AppleSignIn] Firebase signIn success")
                 }
             }
         }
@@ -239,6 +254,11 @@ final class AuthService: NSObject, ObservableObject {
 
     private func handleAppleSignInError(_ error: Error) {
         let nsError = error as NSError
+        Self.logger.error(
+            "Apple Sign-In failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) message=\(nsError.localizedDescription, privacy: .public) userInfo=\(String(describing: nsError.userInfo), privacy: .public)"
+        )
+        print("[AppleSignIn] failed domain=\(nsError.domain) code=\(nsError.code) message=\(nsError.localizedDescription) userInfo=\(nsError.userInfo)")
+
         DispatchQueue.main.async { [weak self] in
             self?.isSigningIn = false
             if nsError.code == ASAuthorizationError.canceled.rawValue {
@@ -246,10 +266,10 @@ final class AuthService: NSObject, ObservableObject {
             }
             if nsError.domain == ASAuthorizationError.errorDomain &&
                 nsError.code == ASAuthorizationError.unknown.rawValue {
-                self?.errorMessage = "Apple sign-in unavailable. Check Apple ID/iCloud login and Sign in with Apple capability."
+                self?.errorMessage = "Apple sign-in unavailable (\(nsError.domain):\(nsError.code)). Check team provisioning, Sign in with Apple capability, and iCloud login."
                 return
             }
-            self?.errorMessage = error.localizedDescription
+            self?.errorMessage = "\(nsError.localizedDescription) (\(nsError.domain):\(nsError.code))"
         }
     }
 }
@@ -259,30 +279,39 @@ final class AuthService: NSObject, ObservableObject {
 extension AuthService: ASAuthorizationControllerDelegate {
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        print("[AppleSignIn] ASAuthorizationController success callback")
         guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
             DispatchQueue.main.async { [weak self] in
                 self?.isSigningIn = false
                 self?.errorMessage = "Invalid Apple credential"
             }
+            print("[AppleSignIn] invalid credential type in controller callback")
             return
         }
         signInWithFirebase(appleIDCredential: appleIDCredential)
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        print("[AppleSignIn] ASAuthorizationController error callback: \(error)")
         handleAppleSignInError(error)
     }
 }
 
 extension AuthService: ASAuthorizationControllerPresentationContextProviding {
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        guard let windowScene = UIApplication.shared.connectedScenes
+        let resolvedScene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
-            .first else {
-            return UIWindow(frame: .zero)
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
+
+        guard let windowScene = resolvedScene else {
+            preconditionFailure("No UIWindowScene available for Apple Sign-In presentation anchor.")
         }
         if let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
             return keyWindow
+        }
+        if let firstWindow = windowScene.windows.first {
+            return firstWindow
         }
         return UIWindow(windowScene: windowScene)
     }

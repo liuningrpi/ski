@@ -83,16 +83,16 @@ final class LocationTracker: NSObject, ObservableObject {
         guard !isTracking else { return }
         let strings = SettingsManager.shared.strings
 
-        guard CLLocationManager.locationServicesEnabled() else {
-            errorMessage = strings.locationServicesDisabled
-            return
-        }
-
         guard canTrack else {
             if authorizationStatus == .notDetermined {
                 requestPermission()
             }
-            errorMessage = strings.locationPermissionNeeded
+            switch authorizationStatus {
+            case .restricted, .denied:
+                errorMessage = strings.locationServicesDisabled
+            default:
+                errorMessage = strings.locationPermissionNeeded
+            }
             return
         }
 

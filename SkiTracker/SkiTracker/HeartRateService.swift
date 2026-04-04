@@ -21,7 +21,7 @@ final class HeartRateService {
 
     private init() {}
 
-    func startLiveUpdates(start: Date, onUpdate: @escaping @MainActor (HeartRateStats) -> Void) {
+    func startLiveUpdates(start: Date, onUpdate: @escaping (HeartRateStats) -> Void) {
         guard HKHealthStore.isHealthDataAvailable(),
               let heartRateType else {
             Task { @MainActor in
@@ -54,11 +54,15 @@ final class HeartRateService {
                 anchor: nil,
                 limit: HKObjectQueryNoLimit
             ) { [weak self] _, samples, _, newAnchor, _ in
-                self?.processLiveSamples(samples, newAnchor: newAnchor, onUpdate: onUpdate)
+                Task { @MainActor [weak self] in
+                    self?.processLiveSamples(samples, newAnchor: newAnchor, onUpdate: onUpdate)
+                }
             }
 
             query.updateHandler = { [weak self] _, samples, _, newAnchor, _ in
-                self?.processLiveSamples(samples, newAnchor: newAnchor, onUpdate: onUpdate)
+                Task { @MainActor [weak self] in
+                    self?.processLiveSamples(samples, newAnchor: newAnchor, onUpdate: onUpdate)
+                }
             }
 
             liveQueryQueue.sync {
@@ -150,7 +154,7 @@ final class HeartRateService {
     private func processLiveSamples(
         _ samples: [HKSample]?,
         newAnchor: HKQueryAnchor?,
-        onUpdate: @escaping @MainActor (HeartRateStats) -> Void
+        onUpdate: @escaping (HeartRateStats) -> Void
     ) {
         let bpmUnit = HKUnit.count().unitDivided(by: .minute())
 

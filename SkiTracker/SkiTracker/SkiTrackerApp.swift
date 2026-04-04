@@ -14,15 +14,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         return true
     }
 
-    func application(_ app: UIApplication,
-                     open url: URL,
-                     options: [UIApplication.OpenURLOptionsKey: Any]) -> Bool {
-        if GIDSignIn.sharedInstance.handle(url) {
-            return true
-        }
-        return FriendService.shared.handleIncomingURL(url)
-    }
-
     func applicationWillTerminate(_ application: UIApplication) {
         LoggingService.shared.flush()
     }
@@ -53,6 +44,12 @@ struct SkiTrackerApp: App {
             ContentView()
                 .environmentObject(locationTracker)
                 .environmentObject(sessionStore)
+                .onOpenURL { url in
+                    if GIDSignIn.sharedInstance.handle(url) {
+                        return
+                    }
+                    _ = FriendService.shared.handleIncomingURL(url)
+                }
         }
     }
 }

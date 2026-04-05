@@ -164,36 +164,57 @@ struct FriendsView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        if friend.hiddenInCompetition {
+                        if friend.isIncomingPending {
+                            Text(strings.friendIncomingRequest)
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                        } else if friend.isOutgoingPending {
+                            Text(strings.friendOutgoingRequest)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        } else if friend.hiddenInCompetition {
                             Text(strings.friendHiddenBadge)
                                 .font(.caption2)
                                 .foregroundColor(.orange)
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if friend.isIncomingPending {
+                            Button {
+                                Task {
+                                    await friendService.acceptFriend(friendUID: friend.uid, currentUserUID: currentUser.uid)
+                                }
+                            } label: {
+                                Label(strings.accept, systemImage: "checkmark")
+                            }
+                            .tint(.green)
+                        }
+
                         Button(role: .destructive) {
                             Task {
                                 await friendService.removeFriend(friendUID: friend.uid, currentUserUID: currentUser.uid)
                             }
                         } label: {
-                            Label(strings.delete, systemImage: "trash")
+                            Label(friend.accepted ? strings.delete : strings.decline, systemImage: "trash")
                         }
 
-                        Button {
-                            Task {
-                                await friendService.setFriendHiddenInCompetition(
-                                    friendUID: friend.uid,
-                                    currentUserUID: currentUser.uid,
-                                    hidden: !friend.hiddenInCompetition
-                                )
+                        if friend.accepted {
+                            Button {
+                                Task {
+                                    await friendService.setFriendHiddenInCompetition(
+                                        friendUID: friend.uid,
+                                        currentUserUID: currentUser.uid,
+                                        hidden: !friend.hiddenInCompetition
+                                    )
+                                }
+                            } label: {
+                                let title = friend.hiddenInCompetition
+                                    ? strings.unhide
+                                    : strings.hide
+                                Label(title, systemImage: friend.hiddenInCompetition ? "eye" : "eye.slash")
                             }
-                        } label: {
-                            let title = friend.hiddenInCompetition
-                                ? strings.unhide
-                                : strings.hide
-                            Label(title, systemImage: friend.hiddenInCompetition ? "eye" : "eye.slash")
+                            .tint(friend.hiddenInCompetition ? .green : .orange)
                         }
-                        .tint(friend.hiddenInCompetition ? .green : .orange)
                     }
                 }
             }

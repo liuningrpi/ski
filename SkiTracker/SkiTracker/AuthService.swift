@@ -85,7 +85,12 @@ final class AuthService: NSObject, ObservableObject {
     // MARK: - Apple Sign-In
 
     func configureAppleSignInRequest(_ request: ASAuthorizationAppleIDRequest) {
-        let nonce = randomNonceString()
+        guard let nonce = randomNonceString() else {
+            isSigningIn = false
+            errorMessage = "Unable to start Apple sign-in. Please try again."
+            print("[AppleSignIn] failed to generate nonce")
+            return
+        }
         currentNonce = nonce
         request.requestedScopes = [.fullName, .email]
         request.nonce = sha256(nonce)
@@ -192,12 +197,13 @@ final class AuthService: NSObject, ObservableObject {
 
     // MARK: - Helper Functions
 
-    private func randomNonceString(length: Int = 32) -> String {
+    private func randomNonceString(length: Int = 32) -> String? {
         precondition(length > 0)
         var randomBytes = [UInt8](repeating: 0, count: length)
         let errorCode = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
         if errorCode != errSecSuccess {
-            fatalError("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(errorCode)")
+            Self.logger.error("Nonce generation failed with OSStatus \(errorCode, privacy: .public)")
+            return nil
         }
         let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
         let nonce = randomBytes.map { byte in
@@ -256,7 +262,7 @@ final class AuthService: NSObject, ObservableObject {
                 if let error = error {
                     let nsError = error as NSError
                     self?.errorMessage = error.localizedDescription
-                    print("[AppleSignIn] Firebase signIn error domain=\(nsError.domain) code=\(nsError.code) message=\(nsError.localizedDescription) userInfo=\(nsError.userInfo)")
+                    print("[AppleSignIn] Firebase signIn error domain=\(nsError.domain) code=\(nsError.code) message=\(nsError.localizedDescription)")
                 } else {
                     self?.applyPreferredAppleDisplayName(from: appleIDCredential)
                     print("[AppleSignIn] Firebase signIn success")
@@ -288,9 +294,9 @@ final class AuthService: NSObject, ObservableObject {
     private func handleAppleSignInError(_ error: Error) {
         let nsError = error as NSError
         Self.logger.error(
-            "Apple Sign-In failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) message=\(nsError.localizedDescription, privacy: .public) userInfo=\(String(describing: nsError.userInfo), privacy: .public)"
+            "Apple Sign-In failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) message=\(nsError.localizedDescription, privacy: .public)"
         )
-        print("[AppleSignIn] failed domain=\(nsError.domain) code=\(nsError.code) message=\(nsError.localizedDescription) userInfo=\(nsError.userInfo)")
+        print("[AppleSignIn] failed domain=\(nsError.domain) code=\(nsError.code) message=\(nsError.localizedDescription)")
 
         DispatchQueue.main.async { [weak self] in
             self?.isSigningIn = false

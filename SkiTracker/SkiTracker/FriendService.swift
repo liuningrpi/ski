@@ -11,6 +11,16 @@ struct AppFriend: Identifiable {
     let email: String?
     let addedAt: Date?
     let hiddenInCompetition: Bool
+    let accepted: Bool
+    let relationStatus: String
+
+    var isIncomingPending: Bool {
+        !accepted && relationStatus == "incoming_pending"
+    }
+
+    var isOutgoingPending: Bool {
+        !accepted && relationStatus == "outgoing_pending"
+    }
 }
 
 // MARK: - Friend Service
@@ -82,6 +92,8 @@ final class FriendService: ObservableObject {
                 let email = data["email"] as? String
                 let addedAt = (data["addedAt"] as? Timestamp)?.dateValue()
                 let hiddenInCompetition = data["hiddenInCompetition"] as? Bool ?? false
+                let accepted = data["accepted"] as? Bool ?? false
+                let relationStatus = data["relationStatus"] as? String ?? (accepted ? "accepted" : "outgoing_pending")
                 let name = (displayName?.isEmpty == false ? displayName : nil) ?? email ?? "User"
                 return AppFriend(
                     id: doc.documentID,
@@ -89,11 +101,16 @@ final class FriendService: ObservableObject {
                     displayName: name,
                     email: email,
                     addedAt: addedAt,
-                    hiddenInCompetition: hiddenInCompetition
+                    hiddenInCompetition: hiddenInCompetition,
+                    accepted: accepted,
+                    relationStatus: relationStatus
                 )
             }
             .sorted { lhs, rhs in
-                (lhs.addedAt ?? .distantPast) > (rhs.addedAt ?? .distantPast)
+                if lhs.isIncomingPending != rhs.isIncomingPending {
+                    return lhs.isIncomingPending
+                }
+                return (lhs.addedAt ?? .distantPast) > (rhs.addedAt ?? .distantPast)
             }
 
             await MainActor.run {
@@ -165,18 +182,27 @@ final class FriendService: ObservableObject {
             let currentName = (currentNameRaw?.isEmpty == false ? currentNameRaw : nil) ?? currentUser.displayName ?? currentUser.email ?? "User"
             let currentEmail = (currentData["email"] as? String) ?? currentUser.email
 
-            let batch = db.batch()
-
             let currentToFriendRef = friendsCollection(uid: currentUser.uid).document(friendUID)
             let friendToCurrentRef = friendsCollection(uid: friendUID).document(currentUser.uid)
+            let existingRelationship = try await currentToFriendRef.getDocument()
+            if existingRelationship.data()?["accepted"] as? Bool == true {
+                await MainActor.run {
+                    self.statusMessage = "\(strings.friendAdded): \(finalTargetName)"
+                    self.isLoading = false
+                }
+                return true
+            }
+
+            let batch = db.batch()
 
             batch.setData([
                 "uid": friendUID,
                 "displayName": finalTargetName,
                 "email": targetEmail ?? "",
-                "accepted": true,
+                "accepted": false,
+                "relationStatus": "outgoing_pending",
                 "hiddenInCompetition": false,
-                "addedAt": FieldValue.serverTimestamp(),
+                "requestedAt": FieldValue.serverTimestamp(),
                 "source": source
             ], forDocument: currentToFriendRef, merge: true)
 
@@ -184,9 +210,10 @@ final class FriendService: ObservableObject {
                 "uid": currentUser.uid,
                 "displayName": currentName,
                 "email": currentEmail ?? "",
-                "accepted": true,
+                "accepted": false,
+                "relationStatus": "incoming_pending",
                 "hiddenInCompetition": false,
-                "addedAt": FieldValue.serverTimestamp(),
+                "requestedAt": FieldValue.serverTimestamp(),
                 "source": source
             ], forDocument: friendToCurrentRef, merge: true)
 
@@ -194,7 +221,7 @@ final class FriendService: ObservableObject {
             await refreshFriends(uid: currentUser.uid)
 
             await MainActor.run {
-                self.statusMessage = "\(strings.friendAdded): \(finalTargetName)"
+                self.statusMessage = "\(strings.friendRequestSent): \(finalTargetName)"
                 self.isLoading = false
             }
             return true
@@ -210,6 +237,41 @@ final class FriendService: ObservableObject {
                 self.isLoading = false
             }
             return false
+        }
+    }
+
+    func acceptFriend(friendUID: String, currentUserUID: String) async {
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+
+        do {
+            let currentRef = friendsCollection(uid: currentUserUID).document(friendUID)
+            let reverseRef = friendsCollection(uid: friendUID).document(currentUserUID)
+            let batch = db.batch()
+            batch.setData([
+                "accepted": true,
+                "relationStatus": "accepted",
+                "addedAt": FieldValue.serverTimestamp()
+            ], forDocument: currentRef, merge: true)
+            batch.setData([
+                "accepted": true,
+                "relationStatus": "accepted",
+                "addedAt": FieldValue.serverTimestamp()
+            ], forDocument: reverseRef, merge: true)
+            try await batch.commit()
+
+            await refreshFriends(uid: currentUserUID)
+            await MainActor.run {
+                statusMessage = SettingsManager.shared.strings.friendRequestAccepted
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
         }
     }
 

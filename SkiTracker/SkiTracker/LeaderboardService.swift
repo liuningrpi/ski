@@ -323,23 +323,36 @@ final class LeaderboardService: ObservableObject {
     private func fetchMutualFriendUIDs(uid: String) async throws -> [String] {
         let snapshot = try await friendsCollection(uid: uid).getDocuments()
         let directFriendUIDs = snapshot.documents.compactMap { doc -> String? in
-            let accepted = doc.data()["accepted"] as? Bool ?? true
+            let accepted = doc.data()["accepted"] as? Bool ?? false
             let hiddenInCompetition = doc.data()["hiddenInCompetition"] as? Bool ?? false
             return (accepted && !hiddenInCompetition) ? doc.documentID : nil
         }
 
         guard !directFriendUIDs.isEmpty else { return [] }
+        let db = self.db
 
-        var mutuals: [String] = []
-        for friendUID in directFriendUIDs {
-            let reverse = try await friendsCollection(uid: friendUID).document(uid).getDocument()
-            guard reverse.exists else { continue }
-            let accepted = reverse.data()?["accepted"] as? Bool ?? true
-            if accepted {
-                mutuals.append(friendUID)
+        return try await withThrowingTaskGroup(of: String?.self) { group in
+            for friendUID in directFriendUIDs {
+                group.addTask {
+                    let reverse = try await db.collection("users")
+                        .document(friendUID)
+                        .collection("friends")
+                        .document(uid)
+                        .getDocument()
+                    guard reverse.exists else { return nil }
+                    let accepted = reverse.data()?["accepted"] as? Bool ?? false
+                    return accepted ? friendUID : nil
+                }
             }
+
+            var mutuals: [String] = []
+            for try await friendUID in group {
+                if let friendUID {
+                    mutuals.append(friendUID)
+                }
+            }
+            return mutuals
         }
-        return mutuals
     }
 
     private func fetchParticipants(
@@ -347,42 +360,52 @@ final class LeaderboardService: ObservableObject {
         fallbackCurrentUser: AppUser,
         fallbackCurrentStats: LeaderboardUserStats
     ) async throws -> [Participant] {
-        var result: [Participant] = []
+        let youLabel = await MainActor.run { SettingsManager.shared.strings.youLabel }
+        let db = self.db
 
-        for uid in uids {
-            let doc = try await userDocument(uid: uid).getDocument()
-            if let data = doc.data() {
-                let name = (data["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let email = data["email"] as? String
-                let displayName = (name?.isEmpty == false ? name : nil) ?? email ?? SettingsManager.shared.strings.youLabel
-                let stats = parseStats(from: data["leaderboardStats"] as? [String: Any])
-                result.append(Participant(uid: uid, displayName: displayName, stats: stats))
-            } else if uid == fallbackCurrentUser.uid {
-                let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? SettingsManager.shared.strings.youLabel
-                result.append(Participant(uid: uid, displayName: fallbackName, stats: fallbackCurrentStats))
+        let fetched = try await withThrowingTaskGroup(of: Participant?.self) { group in
+            for uid in uids {
+                group.addTask {
+                    let doc = try await db.collection("users").document(uid).getDocument()
+                    if let data = doc.data() {
+                        let name = (data["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let email = data["email"] as? String
+                        let displayName = (name?.isEmpty == false ? name : nil) ?? email ?? youLabel
+                        let statsData = data["leaderboardStats"] as? [String: Any]
+                        let stats = LeaderboardUserStats(
+                            maxSpeedKmh: statsData?["maxSpeedKmh"] as? Double ?? 0,
+                            bestRunDescentM: statsData?["bestRunDescentM"] as? Double ?? 0,
+                            maxAltitudeM: statsData?["maxAltitudeM"] as? Double ?? 0,
+                            longestRunDistanceKm: statsData?["longestRunDistanceKm"] as? Double ?? 0,
+                            totalDistanceKm: statsData?["totalDistanceKm"] as? Double ?? 0,
+                            runCount: statsData?["runCount"] as? Int ?? 0,
+                            totalVerticalDropM: statsData?["totalVerticalDropM"] as? Double ?? 0,
+                            totalDurationSec: statsData?["totalDurationSec"] as? Double ?? 0
+                        )
+                        return Participant(uid: uid, displayName: displayName, stats: stats)
+                    }
+                    if uid == fallbackCurrentUser.uid {
+                        let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? youLabel
+                        return Participant(uid: uid, displayName: fallbackName, stats: fallbackCurrentStats)
+                    }
+                    return nil
+                }
             }
+
+            var result: [Participant] = []
+            for try await participant in group {
+                if let participant {
+                    result.append(participant)
+                }
+            }
+            return result
         }
 
-        if result.isEmpty {
-            let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? SettingsManager.shared.strings.youLabel
-            result = [Participant(uid: fallbackCurrentUser.uid, displayName: fallbackName, stats: fallbackCurrentStats)]
+        if fetched.isEmpty {
+            let fallbackName = fallbackCurrentUser.displayName ?? fallbackCurrentUser.email ?? youLabel
+            return [Participant(uid: fallbackCurrentUser.uid, displayName: fallbackName, stats: fallbackCurrentStats)]
         }
-
-        return result
-    }
-
-    private func parseStats(from data: [String: Any]?) -> LeaderboardUserStats {
-        guard let data else { return .zero }
-        return LeaderboardUserStats(
-            maxSpeedKmh: data["maxSpeedKmh"] as? Double ?? 0,
-            bestRunDescentM: data["bestRunDescentM"] as? Double ?? 0,
-            maxAltitudeM: data["maxAltitudeM"] as? Double ?? 0,
-            longestRunDistanceKm: data["longestRunDistanceKm"] as? Double ?? 0,
-            totalDistanceKm: data["totalDistanceKm"] as? Double ?? 0,
-            runCount: data["runCount"] as? Int ?? 0,
-            totalVerticalDropM: data["totalVerticalDropM"] as? Double ?? 0,
-            totalDurationSec: data["totalDurationSec"] as? Double ?? 0
-        )
+        return fetched
     }
 
     // MARK: - Internal Participant

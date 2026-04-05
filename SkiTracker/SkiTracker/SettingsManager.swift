@@ -191,19 +191,19 @@ struct LocalizedStrings {
 
     // Stop Confirmation
     var stopConfirmTitle: String {
-        language == .chinese ? "停止录制？" : "Stop Recording?"
+        tr(en: "Stop Recording?", zh: "停止录制？", es: "¿Detener grabacion?", ja: "記録を停止しますか？", ko: "기록을 중지할까요?", fr: "Arreter l'enregistrement ?", de: "Aufzeichnung beenden?", it: "Interrompere la registrazione?")
     }
 
     var stopConfirmMessage: String {
-        language == .chinese ? "当前轨迹将被保存，你可以在历史记录中回看。" : "Current track will be saved. You can review it in history."
+        tr(en: "Current track will be saved. You can review it in history.", zh: "当前轨迹将被保存，你可以在历史记录中回看。", es: "El recorrido actual se guardara. Puedes revisarlo en el historial.", ja: "現在の軌跡は保存され、履歴で確認できます。", ko: "현재 트랙이 저장되며 기록에서 확인할 수 있습니다.", fr: "La trace actuelle sera enregistree. Vous pourrez la consulter dans l'historique.", de: "Die aktuelle Strecke wird gespeichert. Du kannst sie im Verlauf ansehen.", it: "La traccia corrente verra salvata. Potrai rivederla nella cronologia.")
     }
 
     var continueRecording: String {
-        language == .chinese ? "继续录制" : "Continue"
+        tr(en: "Continue", zh: "继续录制", es: "Continuar", ja: "続ける", ko: "계속", fr: "Continuer", de: "Fortsetzen", it: "Continua")
     }
 
     var stopAndSave: String {
-        language == .chinese ? "停止并保存" : "Stop & Save"
+        tr(en: "Stop & Save", zh: "停止并保存", es: "Detener y guardar", ja: "停止して保存", ko: "중지하고 저장", fr: "Arreter et enregistrer", de: "Stoppen und speichern", it: "Ferma e salva")
     }
 
     // Stats
@@ -703,6 +703,22 @@ struct LocalizedStrings {
         language == .chinese ? "已添加好友" : "Friend added"
     }
 
+    var friendRequestSent: String {
+        tr(en: "Friend request sent", zh: "好友请求已发送", es: "Solicitud de amistad enviada", ja: "友達リクエストを送信しました", ko: "친구 요청을 보냈습니다", fr: "Demande d'ami envoyee", de: "Freundschaftsanfrage gesendet", it: "Richiesta di amicizia inviata")
+    }
+
+    var friendRequestAccepted: String {
+        tr(en: "Friend request accepted", zh: "已接受好友请求", es: "Solicitud de amistad aceptada", ja: "友達リクエストを承認しました", ko: "친구 요청을 수락했습니다", fr: "Demande d'ami acceptee", de: "Freundschaftsanfrage angenommen", it: "Richiesta di amicizia accettata")
+    }
+
+    var friendIncomingRequest: String {
+        tr(en: "Incoming request", zh: "收到好友请求", es: "Solicitud recibida", ja: "受信したリクエスト", ko: "받은 요청", fr: "Demande recue", de: "Eingehende Anfrage", it: "Richiesta in arrivo")
+    }
+
+    var friendOutgoingRequest: String {
+        tr(en: "Request sent", zh: "请求已发送", es: "Solicitud enviada", ja: "送信済み", ko: "요청 보냄", fr: "Demande envoyee", de: "Anfrage gesendet", it: "Richiesta inviata")
+    }
+
     var friendHiddenFromCompetition: String {
         tr(en: "Friend hidden from competition.", zh: "已在排行榜中隐藏该好友。", es: "Amigo ocultado de la competicion.", ja: "フレンドをランキングから非表示にしました。", ko: "친구를 경쟁에서 숨겼습니다.", fr: "Ami masque du classement.", de: "Freund im Wettbewerb ausgeblendet.", it: "Amico nascosto dalla competizione.")
     }
@@ -725,6 +741,14 @@ struct LocalizedStrings {
 
     var unhide: String {
         tr(en: "Unhide", zh: "取消隐藏", es: "Mostrar", ja: "再表示", ko: "숨김 해제", fr: "Afficher", de: "Einblenden", it: "Mostra")
+    }
+
+    var accept: String {
+        tr(en: "Accept", zh: "接受", es: "Aceptar", ja: "承认", ko: "수락", fr: "Accepter", de: "Annehmen", it: "Accetta")
+    }
+
+    var decline: String {
+        tr(en: "Decline", zh: "拒绝", es: "Rechazar", ja: "拒否", ko: "거절", fr: "Refuser", de: "Ablehnen", it: "Rifiuta")
     }
 
     var friendOfflineQueued: String {

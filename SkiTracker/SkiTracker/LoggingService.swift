@@ -173,31 +173,53 @@ final class LoggingService {
         ]
 
         do {
-            let dayRange = todayDateRange()
-            let todayCountSnapshot = try await db.collection("user_feedback")
-                .whereField("userId", isEqualTo: userId)
-                .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: dayRange.start))
-                .whereField("timestamp", isLessThan: Timestamp(date: dayRange.end))
-                .getDocuments()
-            if todayCountSnapshot.documents.count >= 3 {
-                return .dailyLimitExceeded
-            }
+            let dayKey = currentDayKey()
+            let counterRef = db.collection("feedback_rate_limits").document("\(userId)_\(dayKey)")
+            let feedbackRef = db.collection("user_feedback").document()
 
-            try await db.collection("user_feedback").addDocument(data: feedbackData)
+            _ = try await db.runTransaction { transaction, errorPointer in
+                let counterSnapshot: DocumentSnapshot
+                do {
+                    counterSnapshot = try transaction.getDocument(counterRef)
+                } catch {
+                    errorPointer?.pointee = error as NSError
+                    return nil
+                }
+
+                let currentCount = counterSnapshot.data()?["count"] as? Int ?? 0
+                if currentCount >= 3 {
+                    errorPointer?.pointee = NSError(domain: "FeedbackLimit", code: 429, userInfo: nil)
+                    return nil
+                }
+
+                transaction.setData([
+                    "userId": userId,
+                    "dayKey": dayKey,
+                    "count": currentCount + 1,
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], forDocument: counterRef, merge: true)
+                transaction.setData(feedbackData, forDocument: feedbackRef)
+                return NSNumber(value: currentCount + 1)
+            }
             print("[LoggingService] Feedback saved to Firebase")
             return .success
         } catch {
+            let nsError = error as NSError
+            if nsError.domain == "FeedbackLimit" {
+                return .dailyLimitExceeded
+            }
             print("[LoggingService] Failed to save feedback: \(error)")
             return .failure
         }
     }
 
-    private func todayDateRange() -> (start: Date, end: Date) {
-        let calendar = Calendar.current
-        let now = Date()
-        let start = calendar.startOfDay(for: now)
-        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? now.addingTimeInterval(24 * 60 * 60)
-        return (start, end)
+    private func currentDayKey() -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyyMMdd"
+        return formatter.string(from: Date())
     }
 
     private func encodeScreenshotsForFirestore(_ screenshots: [UIImage]) -> [String] {

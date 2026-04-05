@@ -60,6 +60,9 @@ struct TrackSession: Codable, Identifiable {
     var points: [TrackPoint]
     let deviceInfo: String?
     var segments: [RunSegment]
+    var remoteTrackVersion: Int?
+    var remotePointCount: Int?
+    var remoteSegmentCount: Int?
 
     init(startedAt: Date, deviceInfo: String? = nil) {
         self.id = UUID()
@@ -69,6 +72,9 @@ struct TrackSession: Codable, Identifiable {
         self.points = []
         self.deviceInfo = deviceInfo
         self.segments = []
+        self.remoteTrackVersion = nil
+        self.remotePointCount = nil
+        self.remoteSegmentCount = nil
     }
 
     /// Manual initializer for Firestore deserialization
@@ -80,6 +86,13 @@ struct TrackSession: Codable, Identifiable {
         self.points = []
         self.deviceInfo = deviceInfo
         self.segments = []
+        self.remoteTrackVersion = nil
+        self.remotePointCount = nil
+        self.remoteSegmentCount = nil
+    }
+
+    var needsRemoteTrackHydration: Bool {
+        remoteTrackVersion != nil && points.isEmpty && segments.isEmpty
     }
 
     // MARK: - Segment Statistics

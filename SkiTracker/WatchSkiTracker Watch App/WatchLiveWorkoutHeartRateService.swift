@@ -4,6 +4,7 @@ import WatchConnectivity
 import os.log
 
 /// Watch-side authoritative live HR stream powered by HKLiveWorkoutBuilder.
+@available(iOS 26.0, watchOS 10.0, *)
 final class WatchLiveWorkoutHeartRateService: NSObject {
 
     static let shared = WatchLiveWorkoutHeartRateService()
@@ -173,6 +174,7 @@ final class WatchLiveWorkoutHeartRateService: NSObject {
 
 // MARK: - HKWorkoutSessionDelegate
 
+@available(iOS 26.0, watchOS 10.0, *)
 extension WatchLiveWorkoutHeartRateService: HKWorkoutSessionDelegate {
     func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {
         Self.logger.log("Workout session state changed from=\(fromState.rawValue, privacy: .public) to=\(toState.rawValue, privacy: .public)")
@@ -186,6 +188,7 @@ extension WatchLiveWorkoutHeartRateService: HKWorkoutSessionDelegate {
 
 // MARK: - HKLiveWorkoutBuilderDelegate
 
+@available(iOS 26.0, watchOS 10.0, *)
 extension WatchLiveWorkoutHeartRateService: HKLiveWorkoutBuilderDelegate {
     func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
 
@@ -205,6 +208,7 @@ extension WatchLiveWorkoutHeartRateService: HKLiveWorkoutBuilderDelegate {
 
 // MARK: - WCSessionDelegate
 
+@available(iOS 26.0, watchOS 10.0, *)
 extension WatchLiveWorkoutHeartRateService: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         if let error {
@@ -225,4 +229,12 @@ extension WatchLiveWorkoutHeartRateService: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any] = [:]) {
         handleIncoming(message: userInfo)
     }
+
+    #if os(iOS)
+    func sessionDidBecomeInactive(_ session: WCSession) {}
+
+    func sessionDidDeactivate(_ session: WCSession) {
+        session.activate()
+    }
+    #endif
 }

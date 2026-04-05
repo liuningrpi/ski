@@ -200,9 +200,11 @@ struct SettingsView: View {
                                 }
                             }
 
-                            Text(supportStatusText)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            if !supportStatusText.isEmpty {
+                                Text(supportStatusText)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                         .padding(.vertical, 4)
                     } header: {
@@ -380,7 +382,7 @@ struct SettingsView: View {
         let strings = settings.strings
         switch tipJarStore.purchaseResult {
         case .idle, .cancelled:
-            return strings.supportFootnote
+            return ""
         case .success:
             return strings.supportThankYou
         case .pending:

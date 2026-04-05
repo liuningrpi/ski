@@ -10,7 +10,9 @@ import SwiftUI
 @main
 struct WatchSkiTracker_Watch_AppApp: App {
     init() {
-        WatchLiveWorkoutHeartRateService.bootstrap()
+        if #available(iOS 26.0, watchOS 10.0, *) {
+            WatchLiveWorkoutHeartRateService.bootstrap()
+        }
     }
 
     var body: some Scene {

@@ -410,8 +410,11 @@ struct ContentView: View {
                     startTracking()
                 } label: {
                     HStack {
-                        Image(systemName: "figure.skiing.downhill")
+                        Image(systemName: "figure.snowboarding")
+                        Spacer(minLength: 12)
                         Text(strings.startSkiing)
+                        Spacer(minLength: 12)
+                        Image(systemName: "figure.skiing.downhill")
                     }
                     .font(.headline)
                     .foregroundColor(.white)
@@ -582,7 +585,9 @@ struct ContentView: View {
 
     private func refreshLeaderboard(newSessions: [TrackSession]) {
         guard !newSessions.isEmpty else { return }
-        let latestSessions = sessionStore.sessions
+        let newIDs = Set(newSessions.map(\.id))
+        let existing = sessionStore.sessions.filter { !newIDs.contains($0.id) }
+        let latestSessions = newSessions + existing
         if let user = AuthService.shared.currentUser {
             Task {
                 await LeaderboardService.shared.refreshLeaderboard(

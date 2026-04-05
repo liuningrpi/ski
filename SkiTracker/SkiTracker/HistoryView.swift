@@ -1249,6 +1249,12 @@ struct SessionDetailView: View {
             }
             .task(id: session.id) {
                 sessionPlaybackProgress = 0
+                if session.needsRemoteTrackHydration, let user = authService.currentUser,
+                   let hydrated = await FirestoreService.shared.hydrateSessionTrack(session, uid: user.uid) {
+                    await MainActor.run {
+                        session = hydrated
+                    }
+                }
                 await loadSessionHeartRate()
                 if let run = session.skiingRuns.first, session.skiingRuns.count == 1 {
                     await loadSingleRunHeartRate(run: run)

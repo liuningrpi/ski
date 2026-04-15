@@ -403,16 +403,12 @@ struct LocalizedStrings {
         tr(en: "sessions", zh: "次记录", es: "sesiones", ja: "セッション", ko: "세션", fr: "sessions", de: "Sitzungen", it: "sessioni")
     }
 
-    var historyGroupByDate: String {
-        tr(en: "By Date", zh: "按日期", es: "Por fecha", ja: "日付別", ko: "날짜별", fr: "Par date", de: "Nach Datum", it: "Per data")
+    var monthsLabel: String {
+        tr(en: "months", zh: "个月", es: "meses", ja: "か月", ko: "개월", fr: "mois", de: "Monate", it: "mesi")
     }
 
-    var historyGroupByResort: String {
-        tr(en: "By Resort", zh: "按雪场", es: "Por estacion", ja: "スキー場別", ko: "리조트별", fr: "Par station", de: "Nach Skigebiet", it: "Per comprensorio")
-    }
-
-    var resortSummary: String {
-        tr(en: "Resort Summary", zh: "雪场总结", es: "Resumen de estacion", ja: "スキー場サマリー", ko: "리조트 요약", fr: "Resume station", de: "Skigebiets-Zusammenfassung", it: "Riepilogo comprensorio")
+    var daysLabel: String {
+        tr(en: "days", zh: "天", es: "dias", ja: "日", ko: "일", fr: "jours", de: "Tage", it: "giorni")
     }
 
     var unknownResort: String {

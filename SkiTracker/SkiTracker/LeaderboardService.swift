@@ -141,8 +141,8 @@ final class LeaderboardService: ObservableObject {
             let localStats = computeStats(from: localSessions)
             let fetched = try await withTimeout(seconds: 12) { [self] in
                 try await self.upsertStats(uid: user.uid, displayName: user.displayName, fallbackEmail: user.email, stats: localStats)
-                let mutualFriendUIDs = try await self.fetchMutualFriendUIDs(uid: user.uid)
-                let allUIDs = [user.uid] + mutualFriendUIDs
+                let friendUIDs = try await self.fetchVisibleFriendUIDs(uid: user.uid)
+                let allUIDs = [user.uid] + friendUIDs
                 return try await self.fetchParticipants(uids: allUIDs, fallbackCurrentUser: user, fallbackCurrentStats: localStats)
             }
 
@@ -320,38 +320,12 @@ final class LeaderboardService: ObservableObject {
         try await userDocument(uid: uid).setData(data, merge: true)
     }
 
-    private func fetchMutualFriendUIDs(uid: String) async throws -> [String] {
+    private func fetchVisibleFriendUIDs(uid: String) async throws -> [String] {
         let snapshot = try await friendsCollection(uid: uid).getDocuments()
-        let directFriendUIDs = snapshot.documents.compactMap { doc -> String? in
-            let accepted = doc.data()["accepted"] as? Bool ?? false
+        return snapshot.documents.compactMap { doc -> String? in
+            let accepted = doc.data()["accepted"] as? Bool ?? true
             let hiddenInCompetition = doc.data()["hiddenInCompetition"] as? Bool ?? false
             return (accepted && !hiddenInCompetition) ? doc.documentID : nil
-        }
-
-        guard !directFriendUIDs.isEmpty else { return [] }
-        let db = self.db
-
-        return try await withThrowingTaskGroup(of: String?.self) { group in
-            for friendUID in directFriendUIDs {
-                group.addTask {
-                    let reverse = try await db.collection("users")
-                        .document(friendUID)
-                        .collection("friends")
-                        .document(uid)
-                        .getDocument()
-                    guard reverse.exists else { return nil }
-                    let accepted = reverse.data()?["accepted"] as? Bool ?? false
-                    return accepted ? friendUID : nil
-                }
-            }
-
-            var mutuals: [String] = []
-            for try await friendUID in group {
-                if let friendUID {
-                    mutuals.append(friendUID)
-                }
-            }
-            return mutuals
         }
     }
 
@@ -372,16 +346,20 @@ final class LeaderboardService: ObservableObject {
                         let email = data["email"] as? String
                         let displayName = (name?.isEmpty == false ? name : nil) ?? email ?? youLabel
                         let statsData = data["leaderboardStats"] as? [String: Any]
-                        let stats = LeaderboardUserStats(
-                            maxSpeedKmh: statsData?["maxSpeedKmh"] as? Double ?? 0,
-                            bestRunDescentM: statsData?["bestRunDescentM"] as? Double ?? 0,
-                            maxAltitudeM: statsData?["maxAltitudeM"] as? Double ?? 0,
-                            longestRunDistanceKm: statsData?["longestRunDistanceKm"] as? Double ?? 0,
-                            totalDistanceKm: statsData?["totalDistanceKm"] as? Double ?? 0,
-                            runCount: statsData?["runCount"] as? Int ?? 0,
-                            totalVerticalDropM: statsData?["totalVerticalDropM"] as? Double ?? 0,
-                            totalDurationSec: statsData?["totalDurationSec"] as? Double ?? 0
-                        )
+                        let stats = if let statsData, !statsData.isEmpty {
+                            LeaderboardUserStats(
+                                maxSpeedKmh: statsData["maxSpeedKmh"] as? Double ?? 0,
+                                bestRunDescentM: statsData["bestRunDescentM"] as? Double ?? 0,
+                                maxAltitudeM: statsData["maxAltitudeM"] as? Double ?? 0,
+                                longestRunDistanceKm: statsData["longestRunDistanceKm"] as? Double ?? 0,
+                                totalDistanceKm: statsData["totalDistanceKm"] as? Double ?? 0,
+                                runCount: statsData["runCount"] as? Int ?? 0,
+                                totalVerticalDropM: statsData["totalVerticalDropM"] as? Double ?? 0,
+                                totalDurationSec: statsData["totalDurationSec"] as? Double ?? 0
+                            )
+                        } else {
+                            try await self.fallbackStatsFromSessions(uid: uid)
+                        }
                         return Participant(uid: uid, displayName: displayName, stats: stats)
                     }
                     if uid == fallbackCurrentUser.uid {
@@ -414,5 +392,42 @@ final class LeaderboardService: ObservableObject {
         let uid: String
         let displayName: String
         let stats: LeaderboardUserStats
+    }
+
+    private func fallbackStatsFromSessions(uid: String) async throws -> LeaderboardUserStats {
+        let snapshot = try await db.collection("users")
+            .document(uid)
+            .collection("sessions")
+            .getDocuments()
+
+        guard !snapshot.documents.isEmpty else {
+            return .zero
+        }
+
+        var maxSpeedKmh = 0.0
+        var maxAltitudeM = 0.0
+        var totalDistanceKm = 0.0
+        var totalDurationSec = 0.0
+        var totalVerticalDropM = 0.0
+
+        for doc in snapshot.documents {
+            let data = doc.data()
+            maxSpeedKmh = max(maxSpeedKmh, data["maxSpeedKmh"] as? Double ?? 0)
+            maxAltitudeM = max(maxAltitudeM, data["maxAltitude"] as? Double ?? 0)
+            totalDistanceKm += data["totalDistanceKm"] as? Double ?? 0
+            totalDurationSec += data["durationSeconds"] as? Double ?? 0
+            totalVerticalDropM += data["elevationDrop"] as? Double ?? 0
+        }
+
+        return LeaderboardUserStats(
+            maxSpeedKmh: maxSpeedKmh,
+            bestRunDescentM: 0,
+            maxAltitudeM: maxAltitudeM,
+            longestRunDistanceKm: 0,
+            totalDistanceKm: totalDistanceKm,
+            runCount: 0,
+            totalVerticalDropM: totalVerticalDropM,
+            totalDurationSec: totalDurationSec
+        )
     }
 }

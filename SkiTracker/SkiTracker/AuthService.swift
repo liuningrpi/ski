@@ -133,18 +133,21 @@ final class AuthService: NSObject, ObservableObject {
     // MARK: - Google Sign-In
 
     func signInWithGoogle() {
-        guard let clientID = FirebaseApp.app()?.options.clientID else {
+        let plistClientID = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String
+        guard let clientID = FirebaseApp.app()?.options.clientID ?? plistClientID, !clientID.isEmpty else {
             errorMessage = "Firebase configuration error"
+            print("[GoogleSignIn] missing clientID in FirebaseApp/Info.plist")
             return
         }
 
+        print("[GoogleSignIn] starting Google sign-in")
         let config = GIDConfiguration(clientID: clientID)
         GIDSignIn.sharedInstance.configuration = config
 
         DispatchQueue.main.async { [weak self] in
-            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                  let rootViewController = windowScene.windows.first?.rootViewController else {
+            guard let rootViewController = self?.activePresentationController() else {
                 self?.errorMessage = "Cannot find root view controller"
+                print("[GoogleSignIn] failed to find active presentation controller")
                 return
             }
 
@@ -156,13 +159,15 @@ final class AuthService: NSObject, ObservableObject {
                     self?.isSigningIn = false
 
                     if let error = error {
-                        self?.errorMessage = error.localizedDescription
+                        print("[GoogleSignIn] Google SDK sign-in error: \(error.localizedDescription)")
+                        self?.errorMessage = self?.friendlyGoogleErrorMessage(error) ?? error.localizedDescription
                         return
                     }
 
                     guard let user = result?.user,
                           let idToken = user.idToken?.tokenString else {
                         self?.errorMessage = "Failed to get Google credentials"
+                        print("[GoogleSignIn] sign-in completed without usable token")
                         return
                     }
 
@@ -174,7 +179,10 @@ final class AuthService: NSObject, ObservableObject {
                     Auth.auth().signIn(with: credential) { _, error in
                         DispatchQueue.main.async {
                             if let error = error {
-                                self?.errorMessage = error.localizedDescription
+                                print("[GoogleSignIn] Firebase sign-in error: \(error.localizedDescription)")
+                                self?.errorMessage = self?.friendlyGoogleFirebaseErrorMessage(error) ?? error.localizedDescription
+                            } else {
+                                print("[GoogleSignIn] Firebase sign-in success")
                             }
                         }
                     }
@@ -219,6 +227,63 @@ final class AuthService: NSObject, ObservableObject {
             String(format: "%02x", $0)
         }.joined()
         return hashString
+    }
+
+    private func activePresentationController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+
+        let windows = scenes.flatMap(\.windows)
+        let rootViewController = windows.first(where: \.isKeyWindow)?.rootViewController
+            ?? windows.first?.rootViewController
+
+        guard let rootViewController else {
+            return nil
+        }
+
+        var topController = rootViewController
+        while let presented = topController.presentedViewController {
+            topController = presented
+        }
+        return topController
+    }
+
+    private func friendlyGoogleErrorMessage(_ error: Error) -> String {
+        let nsError = error as NSError
+        if nsError.domain == "com.google.GIDSignIn" {
+            switch nsError.code {
+            case GIDSignInError.canceled.rawValue:
+                return "Google sign-in was canceled."
+            case GIDSignInError.hasNoAuthInKeychain.rawValue:
+                return "No Google session found. Please sign in again."
+            case GIDSignInError.EMM.rawValue:
+                return "Google sign-in is blocked by device policy."
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
+    }
+
+    private func friendlyGoogleFirebaseErrorMessage(_ error: Error) -> String {
+        let nsError = error as NSError
+        guard nsError.domain == AuthErrorDomain else {
+            return error.localizedDescription
+        }
+
+        switch AuthErrorCode(rawValue: nsError.code) {
+        case .operationNotAllowed:
+            return "Google sign-in is not enabled in Firebase Authentication."
+        case .invalidCredential:
+            return "Google credential was rejected. Check the Firebase iOS OAuth configuration."
+        case .accountExistsWithDifferentCredential:
+            return "An account already exists with a different sign-in method."
+        case .networkError:
+            return "Network error during Google sign-in. Please try again."
+        default:
+            return error.localizedDescription
+        }
     }
 
     private func signInWithFirebase(appleIDCredential: ASAuthorizationAppleIDCredential) {

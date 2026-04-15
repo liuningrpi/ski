@@ -227,42 +227,80 @@ struct DayGroup: Identifiable {
         }
         return String(format: "%02d:%02d", m, s)
     }
+
+    var resortNames: [String] {
+        let names = sessions.compactMap { session -> String? in
+            let trimmed = session.resortName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (trimmed?.isEmpty == false) ? trimmed : nil
+        }
+        return Array(NSOrderedSet(array: names)) as? [String] ?? names
+    }
+
+    var resortSummary: String? {
+        let names = resortNames
+        guard !names.isEmpty else { return nil }
+        return names.joined(separator: " · ")
+    }
 }
 
-struct ResortGroup: Identifiable {
+struct MonthGroup: Identifiable {
     let id: String
-    let resortName: String
-    let sessions: [TrackSession]
+    let monthStart: Date
+    let dayGroups: [DayGroup]
 
     var totalDistance: Double {
-        sessions.reduce(0) { $0 + $1.totalDistanceKm }
+        dayGroups.reduce(0) { $0 + $1.totalDistance }
     }
 
     var runCount: Int {
-        sessions.reduce(0) { $0 + $1.runCount }
+        dayGroups.reduce(0) { $0 + $1.runCount }
     }
 
     var liftCount: Int {
-        sessions.reduce(0) { $0 + $1.liftCount }
+        dayGroups.reduce(0) { $0 + $1.liftCount }
     }
 
     var totalDuration: TimeInterval {
-        sessions.reduce(0) { $0 + $1.durationSeconds }
+        dayGroups.reduce(0) { $0 + $1.totalDuration }
     }
 
     var totalDescent: Double {
-        sessions.reduce(0) { $0 + $1.totalVerticalDrop }
+        dayGroups.reduce(0) { $0 + $1.totalDescent }
     }
 
     var maxSpeed: Double {
-        sessions.map { $0.maxSpeedKmh }.max() ?? 0
+        dayGroups.map { $0.maxSpeed }.max() ?? 0
     }
 }
 
-private enum HistoryGroupingMode: String, CaseIterable, Identifiable {
-    case byDate
-    case byResort
-    var id: String { rawValue }
+struct YearGroup: Identifiable {
+    let id: String
+    let yearStart: Date
+    let monthGroups: [MonthGroup]
+
+    var totalDistance: Double {
+        monthGroups.reduce(0) { $0 + $1.totalDistance }
+    }
+
+    var runCount: Int {
+        monthGroups.reduce(0) { $0 + $1.runCount }
+    }
+
+    var liftCount: Int {
+        monthGroups.reduce(0) { $0 + $1.liftCount }
+    }
+
+    var totalDuration: TimeInterval {
+        monthGroups.reduce(0) { $0 + $1.totalDuration }
+    }
+
+    var totalDescent: Double {
+        monthGroups.reduce(0) { $0 + $1.totalDescent }
+    }
+
+    var maxSpeed: Double {
+        monthGroups.map { $0.maxSpeed }.max() ?? 0
+    }
 }
 
 // MARK: - HistoryView
@@ -276,8 +314,9 @@ struct HistoryView: View {
 
     @State private var selectedSession: TrackSession?
     @State private var selectedDayGroup: DayGroup?
-    @State private var showDeleteAllConfirm = false
-    @State private var groupingMode: HistoryGroupingMode = .byDate
+    @State private var expandedYears: Set<String> = []
+    @State private var expandedMonths: Set<String> = []
+    @State private var expandedDays: Set<String> = []
 
     private var dayGroups: [DayGroup] {
         let calendar = Calendar.current
@@ -295,23 +334,44 @@ struct HistoryView: View {
         }.sorted { $0.date > $1.date }
     }
 
-    private var resortGroups: [ResortGroup] {
-        let strings = settings.strings
-        let grouped = Dictionary(grouping: sessionStore.sessions) { session in
-            let raw = session.resortName?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let raw, !raw.isEmpty {
-                return raw
+    private var yearGroups: [YearGroup] {
+        let calendar = Calendar.current
+        let monthFormatter = DateFormatter()
+        monthFormatter.dateFormat = "yyyy-MM"
+        let yearFormatter = DateFormatter()
+        yearFormatter.dateFormat = "yyyy"
+
+        let groupedYears = Dictionary(grouping: dayGroups) { dayGroup in
+            calendar.component(.year, from: dayGroup.date)
+        }
+
+        return groupedYears.map { year, groups in
+            let groupedMonths = Dictionary(grouping: groups) { dayGroup in
+                let components = calendar.dateComponents([.year, .month], from: dayGroup.date)
+                return calendar.date(from: components) ?? dayGroup.date
             }
-            return strings.unknownResort
+
+            let monthGroups = groupedMonths.map { monthStart, groupedDays in
+                MonthGroup(
+                    id: monthFormatter.string(from: monthStart),
+                    monthStart: monthStart,
+                    dayGroups: groupedDays.sorted { $0.date > $1.date }
+                )
+            }
+            .sorted { $0.monthStart > $1.monthStart }
+
+            let yearDate = calendar.date(from: DateComponents(year: year, month: 1, day: 1)) ?? Date()
+            return YearGroup(id: yearFormatter.string(from: yearDate), yearStart: yearDate, monthGroups: monthGroups)
         }
-        return grouped.map { (name, sessions) in
-            ResortGroup(
-                id: name,
-                resortName: name,
-                sessions: sessions.sorted { $0.startedAt > $1.startedAt }
-            )
-        }
-        .sorted { $0.sessions.first?.startedAt ?? .distantPast > $1.sessions.first?.startedAt ?? .distantPast }
+        .sorted { $0.yearStart > $1.yearStart }
+    }
+
+    private var mostRecentYearID: String? {
+        yearGroups.first?.id
+    }
+
+    private var mostRecentMonthID: String? {
+        yearGroups.first?.monthGroups.first?.id
     }
 
     var body: some View {
@@ -319,31 +379,17 @@ struct HistoryView: View {
 
         NavigationStack {
             dayListView
-            .navigationTitle(strings.history)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+                .navigationTitle(strings.history)
+                .navigationBarTitleDisplayMode(.inline)
+                .onAppear {
+                    seedExpansionStateIfNeeded()
+                }
+                .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(strings.close) {
                         dismiss()
                     }
                 }
-                if !sessionStore.sessions.isEmpty {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(role: .destructive) {
-                            showDeleteAllConfirm = true
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                    }
-                }
-            }
-            .alert(strings.deleteAllConfirmTitle, isPresented: $showDeleteAllConfirm) {
-                Button(strings.cancel, role: .cancel) { }
-                Button(strings.delete, role: .destructive) {
-                    sessionStore.deleteAll()
-                }
-            } message: {
-                Text(strings.deleteConfirmMessage)
             }
             .sheet(item: $selectedSession) { session in
                 SessionDetailView(session: session)
@@ -360,92 +406,23 @@ struct HistoryView: View {
 
     @ViewBuilder
     private var dayListView: some View {
-        let strings = settings.strings
         let units = settings.unitSystem
 
         List {
-            Section {
-                Picker("", selection: $groupingMode) {
-                    Text(strings.historyGroupByDate).tag(HistoryGroupingMode.byDate)
-                    Text(strings.historyGroupByResort).tag(HistoryGroupingMode.byResort)
-                }
-                .pickerStyle(.segmented)
-            }
-
             if dayGroups.isEmpty {
                 Section {
                     emptyState
                 }
             }
 
-            if groupingMode == .byDate {
-                ForEach(dayGroups) { dayGroup in
-                    Section {
-                        Button {
-                            selectedDayGroup = dayGroup
-                        } label: {
-                            HStack {
-                                Image(systemName: "chart.bar.fill")
-                                    .foregroundColor(.blue)
-                                Text(strings.daySummary)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                Text("\(dayGroup.sessions.count) \(strings.sessionsCount)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 4)
-                        }
+            ForEach(yearGroups) { yearGroup in
+                Section {
+                    yearHeader(yearGroup, units: units)
 
-                        ForEach(dayGroup.sessions) { session in
-                            sessionRow(session: session, units: units, showDate: false)
+                    if expandedYears.contains(yearGroup.id) {
+                        ForEach(yearGroup.monthGroups) { monthGroup in
+                            monthSection(monthGroup, units: units)
                         }
-                        .onDelete { offsets in
-                            deleteSession(from: dayGroup, at: offsets)
-                        }
-                    } header: {
-                        Text(dayGroup.date, style: .date)
-                            .font(.headline)
-                    }
-                }
-            } else {
-                ForEach(resortGroups) { resortGroup in
-                    Section {
-                        HStack {
-                            Image(systemName: "chart.bar.fill")
-                                .foregroundColor(.blue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(strings.resortSummary)
-                                    .foregroundColor(.primary)
-                                Text("\(resortGroup.runCount) \(strings.runsCount) · \(resortGroup.liftCount) \(strings.liftsCompleted)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("\(settings.formatDistance(resortGroup.totalDistance)) \(units.distanceUnit)")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.primary)
-                                Text("\(settings.formatSpeed(resortGroup.maxSpeed)) \(units.speedUnit)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-
-                        ForEach(resortGroup.sessions) { session in
-                            sessionRow(session: session, units: units, showDate: true)
-                        }
-                        .onDelete { offsets in
-                            deleteSession(from: resortGroup, at: offsets)
-                        }
-                    } header: {
-                        Text(resortGroup.resortName)
-                            .font(.headline)
                     }
                 }
             }
@@ -454,18 +431,13 @@ struct HistoryView: View {
     }
 
     @ViewBuilder
-    private func sessionRow(session: TrackSession, units: UnitSystem, showDate: Bool) -> some View {
+    private func sessionRow(session: TrackSession, units: UnitSystem) -> some View {
         Button {
             selectedSession = session
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        if showDate {
-                            Text(session.startedAt, style: .date)
-                            Text("·")
-                                .foregroundColor(.secondary)
-                        }
                         Text(session.startedAt, style: .time)
                         if let end = session.endedAt {
                             Text("-")
@@ -498,20 +470,181 @@ struct HistoryView: View {
             }
             .padding(.vertical, 2)
         }
-    }
-
-    private func deleteSession(from dayGroup: DayGroup, at offsets: IndexSet) {
-        for index in offsets {
-            let session = dayGroup.sessions[index]
-            sessionStore.delete(session)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                sessionStore.delete(session)
+            } label: {
+                Label(settings.strings.delete, systemImage: "trash")
+            }
         }
     }
 
-    private func deleteSession(from resortGroup: ResortGroup, at offsets: IndexSet) {
-        for index in offsets {
-            let session = resortGroup.sessions[index]
-            sessionStore.delete(session)
+    @ViewBuilder
+    private func yearHeader(_ yearGroup: YearGroup, units: UnitSystem) -> some View {
+        Button {
+            toggleExpansion(of: yearGroup.id, in: &expandedYears)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: expandedYears.contains(yearGroup.id) ? "chevron.down.circle.fill" : "chevron.right.circle")
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(yearText(for: yearGroup.yearStart))
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text("\(yearGroup.runCount) \(settings.strings.runsCount) · \(yearGroup.monthGroups.count) \(settings.strings.monthsLabel)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(settings.formatDistance(yearGroup.totalDistance)) \(units.distanceUnit)")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    Text("\(settings.formatSpeed(yearGroup.maxSpeed)) \(units.speedUnit)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
         }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func monthSection(_ monthGroup: MonthGroup, units: UnitSystem) -> some View {
+        VStack(spacing: 8) {
+            Button {
+                toggleExpansion(of: monthGroup.id, in: &expandedMonths)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: expandedMonths.contains(monthGroup.id) ? "chevron.down" : "chevron.right")
+                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(monthText(for: monthGroup.monthStart))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                        Text("\(monthGroup.runCount) \(settings.strings.runsCount) · \(monthGroup.dayGroups.count) \(settings.strings.daysLabel)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text("\(settings.formatDistance(monthGroup.totalDistance)) \(units.distanceUnit)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 2)
+            }
+            .buttonStyle(.plain)
+
+            if expandedMonths.contains(monthGroup.id) {
+                ForEach(monthGroup.dayGroups) { dayGroup in
+                    daySection(dayGroup, units: units)
+                }
+            }
+        }
+        .padding(.leading, 8)
+    }
+
+    @ViewBuilder
+    private func daySection(_ dayGroup: DayGroup, units: UnitSystem) -> some View {
+        VStack(spacing: 8) {
+            Button {
+                toggleExpansion(of: dayGroup.id, in: &expandedDays)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: expandedDays.contains(dayGroup.id) ? "chevron.down" : "chevron.right")
+                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(dayText(for: dayGroup.date))
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        if let resortSummary = dayGroup.resortSummary {
+                            Text(resortSummary)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(settings.formatDistance(dayGroup.totalDistance)) \(units.distanceUnit)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                        Text("\(dayGroup.sessions.count) \(settings.strings.sessionsCount)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .buttonStyle(.plain)
+
+            if expandedDays.contains(dayGroup.id) {
+                Button {
+                    selectedDayGroup = dayGroup
+                } label: {
+                    HStack {
+                        Image(systemName: "chart.bar.fill")
+                            .foregroundColor(.blue)
+                        Text(settings.strings.daySummary)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Text("\(dayGroup.runCount) \(settings.strings.runsCount)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+
+                ForEach(dayGroup.sessions) { session in
+                    sessionRow(session: session, units: units)
+                }
+            }
+        }
+        .padding(.leading, 20)
+    }
+
+    private func seedExpansionStateIfNeeded() {
+        guard expandedYears.isEmpty, expandedMonths.isEmpty, expandedDays.isEmpty else { return }
+        if let mostRecentYearID {
+            expandedYears.insert(mostRecentYearID)
+        }
+        if let mostRecentMonthID {
+            expandedMonths.insert(mostRecentMonthID)
+        }
+    }
+
+    private func toggleExpansion(of id: String, in set: inout Set<String>) {
+        if set.contains(id) {
+            set.remove(id)
+        } else {
+            set.insert(id)
+        }
+    }
+
+    private func yearText(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func monthText(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "LLLL"
+        return formatter.string(from: date)
+    }
+
+    private func dayText(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM d, yyyy"
+        return formatter.string(from: date)
     }
 
     // MARK: - Empty State
@@ -564,6 +697,7 @@ struct DaySummaryView: View {
     @State private var dayPlaybackProgress = 0.0
     @State private var isDayPlaybackRunning = false
     @State private var dayPlaybackTimer: Timer?
+    @State private var showDeleteDayConfirm = false
 
     // Extract all skiing runs from all sessions in this day
     private var allRuns: [RunWithSession] {
@@ -774,10 +908,34 @@ struct DaySummaryView: View {
                     }
                 }
             }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(role: .destructive) {
+                        showDeleteDayConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                }
+            }
+            .confirmationDialog(settings.strings.deleteAllConfirmTitle, isPresented: $showDeleteDayConfirm, titleVisibility: .visible) {
+                Button(settings.strings.delete, role: .destructive) {
+                    deleteDay()
+                }
+                Button(settings.strings.cancel, role: .cancel) { }
+            } message: {
+                Text(settings.strings.deleteConfirmMessage)
+            }
         }
         .onDisappear {
             stopDayPlaybackTimer()
         }
+    }
+
+    private func deleteDay() {
+        for session in dayGroup.sessions {
+            sessionStore.delete(session)
+        }
+        dismiss()
     }
 
     // MARK: - Runs List Section

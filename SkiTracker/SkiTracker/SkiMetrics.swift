@@ -3,11 +3,14 @@ import CoreLocation
 
 enum SkiMetrics {
 
-    // Competitive mode: closer to how many ski apps report speed.
-    static let minRecordedRunDistanceMeters = 50.0
+    // Ignore short fragments; 200 ft ~= 60.96 m.
+    static let minRecordedRunDistanceMeters = 60.96
     private static let maxPlausibleSpeedMps = 35.0   // ~78 mph
     private static let minMovingSpeedMps = 2.0       // exclude slow coasting / queue drift
     private static let maxAscentRateForMoving = 0.15 // m/s; filter clear lift ascent from avg speed
+    private static let peakSensorAccuracyMeters = 25.0
+    private static let minDerivedPeakIntervalSeconds = 1.0
+    private static let minDerivedPeakDistanceMeters = 4.0
 
     static func totalDistanceMeters(points: [TrackPoint]) -> Double {
         guard points.count >= 2 else { return 0 }
@@ -46,19 +49,21 @@ enum SkiMetrics {
         guard points.count >= 2 else { return 0 }
 
         var candidates: [Double] = []
-        candidates.reserveCapacity(points.count * 2)
+        candidates.reserveCapacity(points.count)
 
         for idx in 1..<points.count {
             let prev = points[idx - 1]
             let curr = points[idx]
 
-            // Sensor speed: trust only with reasonable accuracy and plausible value.
+            var pointCandidate: Double?
+
+            // Prefer sensor speed when accuracy is good; it is usually less spiky than point-to-point derivation.
             if curr.speed >= 0,
                curr.speed.isFinite,
                curr.speed <= maxPlausibleSpeedMps,
                curr.horizontalAccuracy > 0,
-               curr.horizontalAccuracy <= 35 {
-                candidates.append(curr.speed)
+               curr.horizontalAccuracy <= peakSensorAccuracyMeters {
+                pointCandidate = curr.speed
             }
 
             guard let dt = validDeltaTime(from: prev, to: curr),
@@ -68,16 +73,38 @@ enum SkiMetrics {
             if derived.isFinite,
                derived >= 0,
                derived <= maxPlausibleSpeedMps,
+               dt >= minDerivedPeakIntervalSeconds,
+               step >= minDerivedPeakDistanceMeters,
                prev.horizontalAccuracy > 0,
-               prev.horizontalAccuracy <= 35,
+               prev.horizontalAccuracy <= peakSensorAccuracyMeters,
                curr.horizontalAccuracy > 0,
-               curr.horizontalAccuracy <= 35 {
-                candidates.append(derived)
+               curr.horizontalAccuracy <= peakSensorAccuracyMeters {
+                pointCandidate = pointCandidate.map { min($0, derived * 1.08) } ?? derived
+            }
+
+            if let pointCandidate {
+                candidates.append(pointCandidate)
             }
         }
 
-        guard let maxMps = candidates.max() else { return 0 }
-        return maxMps * 3.6
+        guard !candidates.isEmpty else { return 0 }
+        let confirmedPeak = stablePeakSpeedMps(candidates)
+        return confirmedPeak * 3.6
+    }
+
+    private static func stablePeakSpeedMps(_ samples: [Double]) -> Double {
+        guard !samples.isEmpty else { return 0 }
+        guard samples.count >= 3 else { return samples.max() ?? 0 }
+
+        var stablePeaks: [Double] = []
+        stablePeaks.reserveCapacity(samples.count - 2)
+
+        for idx in 1..<(samples.count - 1) {
+            let window = [samples[idx - 1], samples[idx], samples[idx + 1]].sorted()
+            stablePeaks.append(window[1]) // rolling median suppresses one-point spikes
+        }
+
+        return stablePeaks.max() ?? samples.max() ?? 0
     }
 
     private static func validDeltaTime(from prev: TrackPoint, to curr: TrackPoint) -> Double? {

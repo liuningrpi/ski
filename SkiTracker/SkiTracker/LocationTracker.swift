@@ -211,8 +211,8 @@ final class LocationTracker: NSObject, ObservableObject {
         } else if speed < 5.0 {
             locationManager.distanceFilter = 3.0
         } else {
-            // High speed skiing: default 2m; Performance mode pushes to 1m for peak capture.
-            locationManager.distanceFilter = performanceMode ? 1.0 : 2.0
+            // High speed skiing: back off slightly to reduce GPS jitter-driven spikes.
+            locationManager.distanceFilter = performanceMode ? 2.0 : 3.0
         }
     }
 

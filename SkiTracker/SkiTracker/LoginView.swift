@@ -14,86 +14,89 @@ struct LoginView: View {
         let strings = settings.strings
 
         NavigationStack {
-            VStack(spacing: 32) {
-                Spacer()
+            SkiScreenBackground {
+                ScrollView {
+                    VStack(spacing: 22) {
+                        Spacer(minLength: 18)
 
-                // App Icon & Title
-                VStack(spacing: 16) {
-                    Image(systemName: "figure.skiing.downhill")
-                        .font(.system(size: 80))
-                        .foregroundColor(.blue)
+                        SkiGlassCard(cornerRadius: 34, padding: 22) {
+                            VStack(alignment: .center, spacing: 18) {
+                                SkiIconBadge(systemName: "figure.skiing.downhill", tint: SkiPalette.primary, size: 76)
 
-                    Text(strings.appTitle)
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                                VStack(spacing: 8) {
+                                    Text(strings.appTitle)
+                                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                                        .foregroundStyle(SkiPalette.textPrimary)
+                                        .multilineTextAlignment(.center)
+                                        .minimumScaleFactor(0.72)
 
-                    Text(strings.welcomeMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                Spacer()
-
-                // Sign In Buttons
-                VStack(spacing: 16) {
-                    // Apple Sign In
-                    SignInWithAppleButton(.signIn) { request in
-                        authService.configureAppleSignInRequest(request)
-                    } onCompletion: { result in
-                        authService.handleAppleSignInResult(result)
-                    }
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(height: 50)
-                    .cornerRadius(12)
-
-                    // Google Sign In
-                    Button {
-                        authService.signInWithGoogle()
-                    } label: {
-                        HStack {
-                            Image(systemName: "g.circle.fill")
-                                .font(.title2)
-                            Text(strings.signInWithGoogle)
-                                .fontWeight(.semibold)
+                                    Text(strings.welcomeMessage)
+                                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                                        .foregroundStyle(SkiPalette.textSecondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color.red)
-                        .cornerRadius(12)
-                    }
 
-                    // Error message
-                    if let error = authService.errorMessage {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundColor(.red)
-                            .multilineTextAlignment(.center)
-                    }
+                        SkiGlassCard(cornerRadius: 30, padding: 18) {
+                            VStack(spacing: 14) {
+                                SignInWithAppleButton(.signIn) { request in
+                                    authService.configureAppleSignInRequest(request)
+                                } onCompletion: { result in
+                                    authService.handleAppleSignInResult(result)
+                                }
+                                .signInWithAppleButtonStyle(.black)
+                                .frame(height: 54)
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                    // Loading indicator
-                    if authService.isSigningIn {
-                        ProgressView()
-                            .padding(.top, 8)
+                                Button {
+                                    authService.signInWithGoogle()
+                                } label: {
+                                    SkiPrimaryButtonLabel(
+                                        title: strings.signInWithGoogle,
+                                        systemName: "g.circle.fill",
+                                        colors: [SkiPalette.red, Color(red: 0.96, green: 0.22, blue: 0.22)]
+                                    )
+                                }
+
+                                if let error = authService.errorMessage {
+                                    Text(error)
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .foregroundStyle(SkiPalette.red)
+                                        .multilineTextAlignment(.center)
+                                        .frame(maxWidth: .infinity)
+                                }
+
+                                if authService.isSigningIn {
+                                    ProgressView()
+                                        .tint(SkiPalette.textPrimary)
+                                        .padding(.top, 2)
+                                }
+                            }
+                        }
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text(strings.continueAsGuest)
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundStyle(SkiPalette.textSecondary)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity)
+                        }
+
+                        Spacer(minLength: 18)
                     }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 20)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, 32)
-
-                // Continue as Guest
-                Button {
-                    dismiss()
-                } label: {
-                    Text(strings.continueAsGuest)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.top, 8)
-
-                Spacer()
             }
-            .padding()
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(strings.close) {
@@ -115,6 +118,7 @@ struct LoginView: View {
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -136,19 +140,23 @@ struct AccountView: View {
             // Logged in state
             Section {
                 // User info
-                HStack {
-                    Image(systemName: user.provider == "apple" ? "apple.logo" : "g.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(user.provider == "apple" ? .primary : .red)
-                        .frame(width: 40)
+                HStack(spacing: 12) {
+                    SkiIconBadge(
+                        systemName: user.provider == "apple" ? "apple.logo" : "g.circle.fill",
+                        tint: user.provider == "apple" ? SkiPalette.textPrimary : SkiPalette.red,
+                        size: 40
+                    )
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.displayName ?? user.email ?? "User")
-                            .font(.headline)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(SkiPalette.textPrimary)
                         if let email = user.email {
                             Text(email)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(SkiPalette.textSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
                         }
                     }
                 }
@@ -167,6 +175,8 @@ struct AccountView: View {
                             ProgressView()
                         }
                     }
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SkiPalette.textPrimary)
                 }
                 .disabled(firestoreService.isSyncing)
 
@@ -174,12 +184,12 @@ struct AccountView: View {
                 if let lastSync = firestoreService.lastSyncDate {
                     HStack {
                         Text(strings.lastSynced)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(SkiPalette.textSecondary)
                         Spacer()
                         Text(lastSync, style: .relative)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(SkiPalette.textSecondary)
                     }
-                    .font(.caption)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
                 }
 
                 // Friends
@@ -190,6 +200,8 @@ struct AccountView: View {
                         Image(systemName: "person.2.fill")
                         Text(strings.friends)
                     }
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SkiPalette.textPrimary)
                 }
 
                 // Sign out
@@ -200,10 +212,12 @@ struct AccountView: View {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                         Text(strings.signOut)
                     }
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                 }
             } header: {
                 Label(strings.account, systemImage: "person.circle")
             }
+            .listRowBackground(Color.clear)
             .alert(strings.signOut, isPresented: $showSignOutConfirm) {
                 Button(strings.cancel, role: .cancel) { }
                 Button(strings.signOut, role: .destructive) {
@@ -213,23 +227,22 @@ struct AccountView: View {
         } else {
             // Not logged in
             Section {
-                HStack {
-                    Image(systemName: "person.crop.circle.badge.questionmark")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                        .frame(width: 40)
+                HStack(spacing: 12) {
+                    SkiIconBadge(systemName: "person.crop.circle.badge.questionmark", tint: SkiPalette.textSecondary, size: 40)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(strings.dataStoredLocally)
-                            .font(.subheadline)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(SkiPalette.textPrimary)
                         Text(strings.signInToSync)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(SkiPalette.textSecondary)
                     }
                 }
             } header: {
                 Label(strings.account, systemImage: "person.circle")
             }
+            .listRowBackground(Color.clear)
         }
     }
 }

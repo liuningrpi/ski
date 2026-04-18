@@ -276,30 +276,34 @@ struct MonthGroup: Identifiable {
 struct YearGroup: Identifiable {
     let id: String
     let yearStart: Date
-    let monthGroups: [MonthGroup]
+    let dayGroups: [DayGroup]
 
     var totalDistance: Double {
-        monthGroups.reduce(0) { $0 + $1.totalDistance }
+        dayGroups.reduce(0) { $0 + $1.totalDistance }
     }
 
     var runCount: Int {
-        monthGroups.reduce(0) { $0 + $1.runCount }
+        dayGroups.reduce(0) { $0 + $1.runCount }
     }
 
     var liftCount: Int {
-        monthGroups.reduce(0) { $0 + $1.liftCount }
+        dayGroups.reduce(0) { $0 + $1.liftCount }
     }
 
     var totalDuration: TimeInterval {
-        monthGroups.reduce(0) { $0 + $1.totalDuration }
+        dayGroups.reduce(0) { $0 + $1.totalDuration }
     }
 
     var totalDescent: Double {
-        monthGroups.reduce(0) { $0 + $1.totalDescent }
+        dayGroups.reduce(0) { $0 + $1.totalDescent }
     }
 
     var maxSpeed: Double {
-        monthGroups.map { $0.maxSpeed }.max() ?? 0
+        dayGroups.map { $0.maxSpeed }.max() ?? 0
+    }
+
+    var dayCount: Int {
+        dayGroups.count
     }
 }
 
@@ -312,11 +316,8 @@ struct HistoryView: View {
     @ObservedObject var settings = SettingsManager.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedSession: TrackSession?
     @State private var selectedDayGroup: DayGroup?
     @State private var expandedYears: Set<String> = []
-    @State private var expandedMonths: Set<String> = []
-    @State private var expandedDays: Set<String> = []
 
     private var dayGroups: [DayGroup] {
         let calendar = Calendar.current
@@ -336,8 +337,6 @@ struct HistoryView: View {
 
     private var yearGroups: [YearGroup] {
         let calendar = Calendar.current
-        let monthFormatter = DateFormatter()
-        monthFormatter.dateFormat = "yyyy-MM"
         let yearFormatter = DateFormatter()
         yearFormatter.dateFormat = "yyyy"
 
@@ -346,22 +345,12 @@ struct HistoryView: View {
         }
 
         return groupedYears.map { year, groups in
-            let groupedMonths = Dictionary(grouping: groups) { dayGroup in
-                let components = calendar.dateComponents([.year, .month], from: dayGroup.date)
-                return calendar.date(from: components) ?? dayGroup.date
-            }
-
-            let monthGroups = groupedMonths.map { monthStart, groupedDays in
-                MonthGroup(
-                    id: monthFormatter.string(from: monthStart),
-                    monthStart: monthStart,
-                    dayGroups: groupedDays.sorted { $0.date > $1.date }
-                )
-            }
-            .sorted { $0.monthStart > $1.monthStart }
-
             let yearDate = calendar.date(from: DateComponents(year: year, month: 1, day: 1)) ?? Date()
-            return YearGroup(id: yearFormatter.string(from: yearDate), yearStart: yearDate, monthGroups: monthGroups)
+            return YearGroup(
+                id: yearFormatter.string(from: yearDate),
+                yearStart: yearDate,
+                dayGroups: groups.sorted { $0.date > $1.date }
+            )
         }
         .sorted { $0.yearStart > $1.yearStart }
     }
@@ -370,30 +359,30 @@ struct HistoryView: View {
         yearGroups.first?.id
     }
 
-    private var mostRecentMonthID: String? {
-        yearGroups.first?.monthGroups.first?.id
+    private var accordionAnimation: Animation {
+        .spring(response: 0.34, dampingFraction: 0.86)
     }
 
     var body: some View {
         let strings = settings.strings
 
         NavigationStack {
-            dayListView
-                .navigationTitle(strings.history)
-                .navigationBarTitleDisplayMode(.inline)
-                .onAppear {
-                    seedExpansionStateIfNeeded()
-                }
-                .toolbar {
+            SkiScreenBackground {
+                dayListView
+            }
+            .navigationTitle(strings.history)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear {
+                seedExpansionStateIfNeeded()
+            }
+            .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(strings.close) {
                         dismiss()
                     }
                 }
-            }
-            .sheet(item: $selectedSession) { session in
-                SessionDetailView(session: session)
-                    .environmentObject(sessionStore)
             }
             .sheet(item: $selectedDayGroup) { dayGroup in
                 DaySummaryView(dayGroup: dayGroup)
@@ -420,224 +409,178 @@ struct HistoryView: View {
                     yearHeader(yearGroup, units: units)
 
                     if expandedYears.contains(yearGroup.id) {
-                        ForEach(yearGroup.monthGroups) { monthGroup in
-                            monthSection(monthGroup, units: units)
+                        VStack(spacing: 10) {
+                            ForEach(yearGroup.dayGroups) { dayGroup in
+                                dayCard(dayGroup, units: units)
+                            }
                         }
+                        .padding(.leading, 8)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
     }
 
     @ViewBuilder
-    private func sessionRow(session: TrackSession, units: UnitSystem) -> some View {
+    private func dayCard(_ dayGroup: DayGroup, units: UnitSystem) -> some View {
         Button {
-            selectedSession = session
+            selectedDayGroup = dayGroup
         } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(session.startedAt, style: .time)
-                        if let end = session.endedAt {
-                            Text("-")
-                            Text(end, style: .time)
-                        }
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
+            HStack(spacing: 12) {
+                SkiIconBadge(
+                    systemName: "cloud.snow.fill",
+                    tint: SkiPalette.green,
+                    size: 32
+                )
 
-                    Text(session.durationFormatted)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(dayText(for: dayGroup.date))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(SkiPalette.textPrimary)
+
+                    Text(dayPreviewText(for: dayGroup, units: units))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(SkiPalette.textSecondary)
+                        .lineLimit(2)
                 }
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("\(settings.formatDistance(session.totalDistanceKm)) \(units.distanceUnit)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                    Text("\(settings.formatSpeed(session.maxSpeedKmh)) \(units.speedUnit)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                VStack(alignment: .trailing, spacing: 6) {
+                    historyMetricChip(
+                        text: "\(dayGroup.runCount) \(settings.strings.runsCount)",
+                        tint: SkiPalette.green
+                    )
+                    Text("\(settings.formatAltitude(dayGroup.totalDescent)) \(units.altitudeUnit)")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SkiPalette.textSecondary)
                 }
 
                 Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(SkiPalette.textSecondary)
             }
-            .padding(.vertical, 2)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.black.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(SkiPalette.stroke, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                sessionStore.delete(session)
-            } label: {
-                Label(settings.strings.delete, systemImage: "trash")
-            }
-        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     @ViewBuilder
     private func yearHeader(_ yearGroup: YearGroup, units: UnitSystem) -> some View {
+        let isExpanded = expandedYears.contains(yearGroup.id)
+
         Button {
-            toggleExpansion(of: yearGroup.id, in: &expandedYears)
+            toggleYearExpansion(yearGroup)
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: expandedYears.contains(yearGroup.id) ? "chevron.down.circle.fill" : "chevron.right.circle")
-                    .foregroundColor(.blue)
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 14) {
+                SkiIconBadge(
+                    systemName: "calendar",
+                    tint: isExpanded ? SkiPalette.primary : SkiPalette.textSecondary,
+                    size: 40
+                )
+
+                VStack(alignment: .leading, spacing: 6) {
                     Text(yearText(for: yearGroup.yearStart))
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Text("\(yearGroup.runCount) \(settings.strings.runsCount) · \(yearGroup.monthGroups.count) \(settings.strings.monthsLabel)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(SkiPalette.textPrimary)
+
+                    Text("\(yearGroup.runCount) \(settings.strings.runsCount) · \(yearGroup.dayCount) \(settings.strings.daysLabel) · \(yearGroup.liftCount) \(settings.strings.stateLift)")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(SkiPalette.textSecondary)
+                        .lineLimit(2)
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .trailing, spacing: 8) {
                     Text("\(settings.formatDistance(yearGroup.totalDistance)) \(units.distanceUnit)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                    Text("\(settings.formatSpeed(yearGroup.maxSpeed)) \(units.speedUnit)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(SkiPalette.textPrimary)
+                    historyMetricChip(
+                        text: "\(settings.formatSpeed(yearGroup.maxSpeed)) \(units.speedUnit)",
+                        tint: SkiPalette.yellow
+                    )
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(isExpanded ? SkiPalette.primary : SkiPalette.textSecondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
             }
-            .padding(.vertical, 4)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.black.opacity(isExpanded ? 0.28 : 0.18))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(isExpanded ? SkiPalette.primary.opacity(0.34) : SkiPalette.stroke, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
-    @ViewBuilder
-    private func monthSection(_ monthGroup: MonthGroup, units: UnitSystem) -> some View {
-        VStack(spacing: 8) {
-            Button {
-                toggleExpansion(of: monthGroup.id, in: &expandedMonths)
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: expandedMonths.contains(monthGroup.id) ? "chevron.down" : "chevron.right")
-                        .foregroundColor(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(monthText(for: monthGroup.monthStart))
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                        Text("\(monthGroup.runCount) \(settings.strings.runsCount) · \(monthGroup.dayGroups.count) \(settings.strings.daysLabel)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Text("\(settings.formatDistance(monthGroup.totalDistance)) \(units.distanceUnit)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.vertical, 2)
-            }
-            .buttonStyle(.plain)
-
-            if expandedMonths.contains(monthGroup.id) {
-                ForEach(monthGroup.dayGroups) { dayGroup in
-                    daySection(dayGroup, units: units)
-                }
-            }
-        }
-        .padding(.leading, 8)
+    private func historyMetricChip(text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .foregroundStyle(SkiPalette.textPrimary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.18), in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(tint.opacity(0.35), lineWidth: 1)
+            )
     }
 
-    @ViewBuilder
-    private func daySection(_ dayGroup: DayGroup, units: UnitSystem) -> some View {
-        VStack(spacing: 8) {
-            Button {
-                toggleExpansion(of: dayGroup.id, in: &expandedDays)
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: expandedDays.contains(dayGroup.id) ? "chevron.down" : "chevron.right")
-                        .foregroundColor(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(dayText(for: dayGroup.date))
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                        if let resortSummary = dayGroup.resortSummary {
-                            Text(resortSummary)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(2)
-                        }
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(settings.formatDistance(dayGroup.totalDistance)) \(units.distanceUnit)")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                        Text("\(dayGroup.sessions.count) \(settings.strings.sessionsCount)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .buttonStyle(.plain)
-
-            if expandedDays.contains(dayGroup.id) {
-                Button {
-                    selectedDayGroup = dayGroup
-                } label: {
-                    HStack {
-                        Image(systemName: "chart.bar.fill")
-                            .foregroundColor(.blue)
-                        Text(settings.strings.daySummary)
-                            .foregroundColor(.primary)
-                        Spacer()
-                        Text("\(dayGroup.runCount) \(settings.strings.runsCount)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(.plain)
-
-                ForEach(dayGroup.sessions) { session in
-                    sessionRow(session: session, units: units)
-                }
-            }
-        }
-        .padding(.leading, 20)
+    private func dayPreviewText(for dayGroup: DayGroup, units: UnitSystem) -> String {
+        let resortText = dayGroup.resortSummary ?? settings.strings.daySummary
+        return "\(resortText) · \(dayGroup.runCount) \(settings.strings.runsCount) · \(settings.formatSpeed(dayGroup.maxSpeed)) \(units.speedUnit)"
     }
 
     private func seedExpansionStateIfNeeded() {
-        guard expandedYears.isEmpty, expandedMonths.isEmpty, expandedDays.isEmpty else { return }
-        if let mostRecentYearID {
-            expandedYears.insert(mostRecentYearID)
-        }
-        if let mostRecentMonthID {
-            expandedMonths.insert(mostRecentMonthID)
-        }
+        guard expandedYears.isEmpty else { return }
+        expandMostRecentPath()
     }
 
-    private func toggleExpansion(of id: String, in set: inout Set<String>) {
-        if set.contains(id) {
-            set.remove(id)
-        } else {
-            set.insert(id)
+    private func expandMostRecentPath() {
+        guard let mostRecentYearID else { return }
+        expandedYears = [mostRecentYearID]
+    }
+
+    private func toggleYearExpansion(_ yearGroup: YearGroup) {
+        withAnimation(accordionAnimation) {
+            if expandedYears.contains(yearGroup.id) {
+                expandedYears.remove(yearGroup.id)
+            } else {
+                expandedYears.insert(yearGroup.id)
+            }
         }
     }
 
     private func yearText(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy"
-        return formatter.string(from: date)
-    }
-
-    private func monthText(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "LLLL"
         return formatter.string(from: date)
     }
 
@@ -902,13 +845,11 @@ struct DaySummaryView: View {
             .navigationTitle(strings.daySummary)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button(strings.close) {
                         dismiss()
                     }
                 }
-            }
-            .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(role: .destructive) {
                         showDeleteDayConfirm = true

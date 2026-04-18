@@ -15,13 +15,12 @@ struct ContentView: View {
     @State private var showLeaderboard = false
     @State private var showSettings = false
     @State private var showStopConfirm = false
-    @State private var liveSession: TrackSession?
     @ObservedObject private var watchHeartRateReceiver = WatchHeartRateReceiver.shared
 
-    /// Timer to refresh stats every second
+    /// Timer to refresh stats every second.
     @State private var statsTimer: Timer?
 
-    /// Trigger for stats refresh
+    /// Trigger for stats refresh.
     @State private var statsTick: Int = 0
     @State private var liveHeartRateStats = HeartRateStats(maxBPM: nil, avgBPM: nil)
     @State private var isPollingHeartRate = false
@@ -35,86 +34,48 @@ struct ContentView: View {
 
         NavigationStack {
             ZStack(alignment: .bottom) {
-                // Map layer (full screen)
                 mapLayer
-                    .ignoresSafeArea(edges: .top)
+                    .ignoresSafeArea()
 
-                if tracker.isTracking, let message = tracker.resortWelcomeMessage {
-                    VStack {
-                        Text(message)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Color.green.opacity(0.9))
-                            .clipShape(Capsule())
-                            .padding(.top, 8)
-                        Spacer()
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.56),
+                        Color.clear,
+                        Color.black.opacity(0.92)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+                VStack(spacing: 0) {
+                    topChrome
+
+                    if tracker.isTracking, let message = tracker.resortWelcomeMessage {
+                        welcomeBanner(message)
+                            .padding(.top, 14)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .animation(.easeInOut(duration: 0.24), value: message)
                     }
-                    .padding(.horizontal, 16)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: message)
+
+                    Spacer()
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
 
                 if tracker.isTracking && !isLiveMapAutoFollow {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Button {
-                                isLiveMapAutoFollow = true
-                                liveMapRecenterTrigger += 1
-                            } label: {
-                                Image(systemName: "location.fill")
-                                    .foregroundColor(.white)
-                                    .padding(10)
-                                    .background(Color.blue)
-                                    .clipShape(Circle())
-                            }
-                            .padding(.trailing, 16)
-                            .padding(.top, 8)
-                        }
-                        Spacer()
-                    }
+                    recenterButton
+                        .padding(.trailing, 16)
+                        .padding(.bottom, tracker.isTracking ? 370 : 210)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
-                // Bottom control panel
-                VStack(spacing: 0) {
-                    // Stats panel (shown when tracking or reviewing)
-                    if tracker.isTracking {
-                        liveStatsPanel
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-
-                    // Control buttons
-                    controlBar
-                }
-                .background(.ultraThinMaterial)
+                bottomOverlay
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
             }
-            .navigationTitle(strings.appTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        Button {
-                            showLeaderboard = true
-                        } label: {
-                            Image(systemName: "trophy.fill")
-                        }
-                        Button {
-                            showHistory = true
-                        } label: {
-                            Image(systemName: "clock.arrow.circlepath")
-                        }
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) {
                 HistoryView()
             }
@@ -148,6 +109,108 @@ struct ContentView: View {
                 liveHeartRateStats = stats
             }
         }
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Top Chrome
+
+    private var topChrome: some View {
+        let strings = settings.strings
+
+        return ZStack {
+            HStack {
+                floatingIconButton(systemName: "gearshape.fill", tint: SkiPalette.textPrimary) {
+                    showSettings = true
+                }
+
+                Spacer()
+
+                HStack(spacing: 10) {
+                    floatingIconButton(systemName: "trophy.fill", tint: SkiPalette.yellow) {
+                        showLeaderboard = true
+                    }
+
+                    floatingIconButton(systemName: "clock.arrow.circlepath", tint: SkiPalette.primary) {
+                        showHistory = true
+                    }
+                }
+            }
+
+            VStack(spacing: 4) {
+                Text(strings.appTitle)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(SkiPalette.textPrimary)
+                Text(tracker.isTracking ? stateName(tracker.segmenter.currentState) : strings.startSkiing)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(SkiPalette.textSecondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.black.opacity(0.24), in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(SkiPalette.stroke, lineWidth: 1)
+            )
+        }
+    }
+
+    private func floatingIconButton(systemName: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(.black.opacity(0.24))
+                Circle()
+                    .stroke(SkiPalette.stroke, lineWidth: 1)
+                Image(systemName: systemName)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            .frame(width: 50, height: 50)
+        }
+    }
+
+    private func welcomeBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "mountain.2.fill")
+                .foregroundStyle(SkiPalette.green)
+            Text(message)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(SkiPalette.textPrimary)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.black.opacity(0.34), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(SkiPalette.stroke, lineWidth: 1)
+        )
+    }
+
+    private var recenterButton: some View {
+        Button {
+            isLiveMapAutoFollow = true
+            liveMapRecenterTrigger += 1
+        } label: {
+            Image(systemName: "location.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 50, height: 50)
+                .background(
+                    LinearGradient(
+                        colors: [SkiPalette.primary, SkiPalette.cyan],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Circle()
+                )
+                .overlay(
+                    Circle()
+                        .stroke(SkiPalette.stroke, lineWidth: 1)
+                )
+                .shadow(color: SkiPalette.primary.opacity(0.35), radius: 16, y: 10)
+        }
     }
 
     // MARK: - Map Layer
@@ -156,7 +219,6 @@ struct ContentView: View {
     private var mapLayer: some View {
         let coords = tracker.locations.map { $0.coordinate }
         if coords.isEmpty {
-            // Show default map centered on user or a default location
             TrackMapView(
                 coordinates: [],
                 followUser: false,
@@ -179,151 +241,178 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Bottom Overlay
+
+    private var bottomOverlay: some View {
+        VStack(spacing: 12) {
+            if tracker.isTracking {
+                liveStatsPanel
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            controlBar
+        }
+        .frame(maxWidth: 760)
+    }
+
     // MARK: - Live Stats Panel
 
     @ViewBuilder
     private var liveStatsPanel: some View {
         let strings = settings.strings
         let units = settings.unitSystem
-        let _ = statsTick // force refresh
+        let _ = statsTick
         let session = buildLiveSession()
         let segmenter = tracker.segmenter
 
-        VStack(spacing: 8) {
-            // Status bar with state indicator
-            HStack {
-                // Recording indicator
-                Circle()
-                    .fill(tracker.isPaused ? Color.yellow : Color.red)
-                    .frame(width: 8, height: 8)
-                Text(tracker.isPaused ? strings.paused : strings.recording)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(tracker.isPaused ? .yellow : .red)
+        SkiGlassCard(cornerRadius: 28, padding: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(tracker.isPaused ? SkiPalette.yellow : SkiPalette.red)
+                                .frame(width: 8, height: 8)
+                            Text(tracker.isPaused ? strings.paused.uppercased() : strings.recording.uppercased())
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .kerning(0.8)
+                                .foregroundStyle(tracker.isPaused ? SkiPalette.yellow : SkiPalette.red)
+                        }
 
-                Spacer()
+                        Text(stateName(segmenter.currentState))
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(SkiPalette.textPrimary)
 
-                // Current skiing state
-                HStack(spacing: 4) {
-                    Image(systemName: stateIcon(segmenter.currentState))
-                        .foregroundColor(stateColor(segmenter.currentState))
-                    Text(stateName(segmenter.currentState))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(stateColor(segmenter.currentState))
+                        Text(summaryDescription(for: segmenter.currentState))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(SkiPalette.textSecondary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    VStack(alignment: .trailing, spacing: 10) {
+                        SkiStatusPill(
+                            title: stateName(segmenter.currentState),
+                            systemName: stateIcon(segmenter.currentState),
+                            tint: stateColor(segmenter.currentState)
+                        )
+
+                        Button {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                isLivePanelCollapsed.toggle()
+                            }
+                        } label: {
+                            Image(systemName: isLivePanelCollapsed ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(SkiPalette.textPrimary)
+                                .frame(width: 34, height: 34)
+                                .background(.black.opacity(0.25), in: Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(SkiPalette.stroke, lineWidth: 1)
+                                )
+                        }
+                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(stateColor(segmenter.currentState).opacity(0.15))
-                .cornerRadius(8)
 
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isLivePanelCollapsed.toggle()
+                HStack(spacing: 10) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            liveSummaryChips(strings: strings, units: units, segmenter: segmenter)
+                        }
+                        VStack(spacing: 10) {
+                            liveSummaryChips(strings: strings, units: units, segmenter: segmenter)
+                        }
                     }
-                } label: {
-                    Image(systemName: isLivePanelCollapsed ? "chevron.up" : "chevron.down")
-                        .font(.caption.bold())
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(Color(.systemGray5))
-                        .clipShape(Circle())
                 }
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
 
-            if isLivePanelCollapsed {
-                HStack(spacing: 16) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "figure.skiing.downhill")
-                            .foregroundColor(.blue)
-                        Text("\(segmenter.skiingRunCount)")
-                            .fontWeight(.bold)
-                        Text(strings.runsCount)
-                            .foregroundColor(.secondary)
+                if !isLivePanelCollapsed {
+                        StatsView(
+                            durationFormatted: session.durationFormatted,
+                            distanceKm: session.totalDistanceKm,
+                            maxSpeedKmh: session.maxSpeedKmh,
+                            avgSpeedKmh: session.avgSpeedKmh,
+                            maxAltitude: session.maxAltitude,
+                            elevationDrop: session.elevationDrop,
+                            pointCount: session.points.count,
+                            showHeartRate: true,
+                            maxHeartRateBPM: liveHeartRateStats.maxBPM,
+                            avgHeartRateBPM: liveHeartRateStats.avgBPM,
+                            compact: true
+                        )
+
+                    if statsTick >= 20 && liveHeartRateStats.maxBPM == nil {
+                        Text(strings.waitingHeartRateData)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(SkiPalette.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
                     }
-                    .font(.caption)
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                            .foregroundColor(.green)
-                        Text("\(settings.formatDistance(session.totalDistanceKm)) \(units.distanceUnit)")
-                            .fontWeight(.bold)
-                    }
-                    .font(.caption)
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "gauge.with.needle.fill")
-                            .foregroundColor(.orange)
-                        Text("\(settings.formatSpeed(session.maxSpeedKmh)) \(units.speedUnit)")
-                            .fontWeight(.bold)
-                    }
-                    .font(.caption)
-
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-            } else {
-                // Run counter
-                HStack(spacing: 16) {
-                    // Runs completed
-                    HStack(spacing: 4) {
-                        Image(systemName: "figure.skiing.downhill")
-                            .foregroundColor(.blue)
-                        Text("\(segmenter.skiingRunCount)")
-                            .fontWeight(.bold)
-                        Text(strings.runsCount)
-                            .foregroundColor(.secondary)
-                    }
-                    .font(.caption)
-
-                    // Lifts taken
-                    HStack(spacing: 4) {
-                        Image(systemName: "cablecar")
-                            .foregroundColor(.orange)
-                        Text("\(segmenter.liftCount)")
-                            .fontWeight(.bold)
-                    }
-                    .font(.caption)
-
-                    // Vertical drop
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down")
-                            .foregroundColor(.green)
-                        Text("\(settings.formatAltitude(segmenter.totalVerticalDrop))")
-                            .fontWeight(.bold)
-                        Text(units.altitudeUnit)
-                            .foregroundColor(.secondary)
-                    }
-                    .font(.caption)
-
-                    Spacer()
-                }
-                .padding(.horizontal)
-
-                StatsView(
-                    durationFormatted: session.durationFormatted,
-                    distanceKm: session.totalDistanceKm,
-                    maxSpeedKmh: session.maxSpeedKmh,
-                    avgSpeedKmh: session.avgSpeedKmh,
-                    maxAltitude: session.maxAltitude,
-                    elevationDrop: session.elevationDrop,
-                    pointCount: session.points.count,
-                    showHeartRate: true,
-                    maxHeartRateBPM: liveHeartRateStats.maxBPM,
-                    avgHeartRateBPM: liveHeartRateStats.avgBPM
-                )
-
-                if statsTick >= 20 && liveHeartRateStats.maxBPM == nil {
-                    Text(strings.waitingHeartRateData)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
                 }
             }
+        }
+    }
+
+    private func liveSummaryChip(icon: String, label: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(tint)
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SkiPalette.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(SkiPalette.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(SkiPalette.stroke, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func liveSummaryChips(strings: LocalizedStrings, units: UnitSystem, segmenter: RunSegmenter) -> some View {
+        liveSummaryChip(
+            icon: "figure.skiing.downhill",
+            label: strings.runsCount,
+            value: "\(segmenter.skiingRunCount)",
+            tint: SkiPalette.primary
+        )
+        liveSummaryChip(
+            icon: "cablecar",
+            label: strings.stateLift,
+            value: "\(segmenter.liftCount)",
+            tint: SkiPalette.yellow
+        )
+        liveSummaryChip(
+            icon: "arrow.down.right",
+            label: strings.elevationDrop,
+            value: "\(settings.formatAltitude(segmenter.totalVerticalDrop)) \(units.altitudeUnit)",
+            tint: SkiPalette.green
+        )
+    }
+
+    private func summaryDescription(for state: SkiingState) -> String {
+        let strings = settings.strings
+        switch state {
+        case .idle:
+            return strings.stateIdle
+        case .skiing:
+            return strings.maxSpeed
+        case .lift:
+            return strings.stateLift
+        case .stopped:
+            return strings.stateStopped
         }
     }
 
@@ -340,10 +429,10 @@ struct ContentView: View {
 
     private func stateColor(_ state: SkiingState) -> Color {
         switch state {
-        case .idle: return .gray
-        case .skiing: return .blue
-        case .lift: return .orange
-        case .stopped: return .yellow
+        case .idle: return SkiPalette.textSecondary
+        case .skiing: return SkiPalette.primary
+        case .lift: return SkiPalette.yellow
+        case .stopped: return SkiPalette.red
         }
     }
 
@@ -363,120 +452,136 @@ struct ContentView: View {
     private var controlBar: some View {
         let strings = settings.strings
 
-        VStack(spacing: 12) {
-            if !tracker.canTrack {
-                // Permission needed
-                permissionSection
-            } else if tracker.isTracking {
-                HStack(spacing: 12) {
-                    Button {
-                        if tracker.isPaused {
-                            resumeTracking()
-                        } else {
-                            pauseTracking()
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: tracker.isPaused ? "play.fill" : "pause.fill")
-                            Text(tracker.isPaused ? strings.resumeRecording : strings.pauseRecording)
-                        }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(tracker.isPaused ? Color.blue : Color.orange)
-                        .cornerRadius(14)
-                    }
-
-                    Button {
-                        showStopConfirm = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "stop.fill")
-                            Text(strings.stopRecording)
-                        }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red)
-                        .cornerRadius(14)
-                    }
+        if tracker.isTracking {
+            SkiGlassCard(cornerRadius: 28, padding: 12) {
+                HStack(spacing: 10) {
+                    recordingControlButtons(strings: strings)
                 }
-                .padding(.horizontal)
-            } else {
-                // Start button
-                Button {
-                    startTracking()
-                } label: {
-                    HStack {
-                        Image(systemName: "figure.snowboarding")
-                        Spacer(minLength: 12)
-                        Text(strings.startSkiing)
-                        Spacer(minLength: 12)
-                        Image(systemName: "figure.skiing.downhill")
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .cornerRadius(14)
-                }
-                .padding(.horizontal)
             }
+        } else {
+            Button {
+                startTracking()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "figure.skiing.downhill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(.white.opacity(0.14), in: Circle())
 
-            // Error message
-            if let error = tracker.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.horizontal)
+                    Text(strings.startSkiing)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    Image(systemName: "figure.snowboarding")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(.white.opacity(0.14), in: Circle())
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 18)
+                .background(
+                    LinearGradient(
+                        colors: [SkiPalette.primary, SkiPalette.cyan],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                )
+                .shadow(color: SkiPalette.primary.opacity(0.30), radius: 16, y: 10)
             }
+            .buttonStyle(.plain)
         }
-        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func recordingControlButtons(strings: LocalizedStrings) -> some View {
+        Button {
+            if tracker.isPaused {
+                resumeTracking()
+            } else {
+                pauseTracking()
+            }
+        } label: {
+            SkiActionButton(
+                title: tracker.isPaused ? strings.resumeRecording : strings.pauseRecording,
+                subtitle: tracker.isPaused ? strings.recording : strings.paused,
+                systemName: tracker.isPaused ? "play.fill" : "pause.fill",
+                colors: tracker.isPaused
+                    ? [SkiPalette.primary, SkiPalette.cyan]
+                    : [SkiPalette.orange, SkiPalette.yellow],
+                compact: true
+            )
+        }
+        .buttonStyle(.plain)
+
+        Button {
+            showStopConfirm = true
+        } label: {
+            SkiActionButton(
+                title: strings.stopRecording,
+                subtitle: strings.stopAndSave,
+                systemName: "stop.fill",
+                colors: [SkiPalette.red, Color(red: 0.85, green: 0.18, blue: 0.28)],
+                compact: true
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Permission Section
 
-    @ViewBuilder
     private var permissionSection: some View {
         let strings = settings.strings
 
-        VStack(spacing: 8) {
-            Text(strings.locationPermissionNeeded)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        return SkiGlassCard(cornerRadius: 32, padding: 18) {
+            VStack(alignment: .leading, spacing: 16) {
+                SkiSectionTitle(
+                    eyebrow: strings.appTitle,
+                    title: strings.locationPermissionNeeded,
+                    detail: tracker.authorizationStatus == .denied ? strings.goToSettings : strings.authorizeLocation
+                )
 
-            if tracker.authorizationStatus == .denied {
-                Button(strings.goToSettings) {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
+                if tracker.authorizationStatus == .denied {
+                    Button(strings.goToSettings) {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
                     }
-                }
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.orange)
-                .cornerRadius(14)
-                .padding(.horizontal)
-            } else {
-                Button {
-                    tracker.requestPermission()
-                } label: {
-                    HStack {
-                        Image(systemName: "location.fill")
-                        Text(strings.authorizeLocation)
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .cornerRadius(14)
+                    .padding(.vertical, 18)
+                    .background(
+                        LinearGradient(
+                            colors: [SkiPalette.orange, SkiPalette.yellow],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    )
+                } else {
+                    Button {
+                        tracker.requestPermission()
+                    } label: {
+                        SkiActionButton(
+                            title: strings.authorizeLocation,
+                            subtitle: strings.startSkiing,
+                            systemName: "location.fill",
+                            colors: [SkiPalette.primary, SkiPalette.cyan]
+                        )
+                    }
                 }
-                .padding(.horizontal)
+
+                if let error = tracker.errorMessage {
+                    Text(error)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(SkiPalette.red)
+                }
             }
         }
     }
@@ -567,7 +672,6 @@ struct ContentView: View {
         guard session.points.count >= 2 else { return }
         sessionStore.save(session)
 
-        // Auto-sync newly recorded session for signed-in users.
         if let user = AuthService.shared.currentUser {
             Task {
                 do {
@@ -621,7 +725,6 @@ struct ContentView: View {
             return
         }
 
-        // Watch live stream is authoritative when active/recent.
         if watchHeartRateReceiver.hasRecentSample {
             return
         }

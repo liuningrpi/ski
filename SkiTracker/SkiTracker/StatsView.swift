@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - StatsView
 
-/// Displays skiing statistics in a compact grid layout.
+/// Displays skiing statistics in a premium two-column grid layout.
 struct StatsView: View {
 
     @ObservedObject var settings = SettingsManager.shared
@@ -17,84 +17,95 @@ struct StatsView: View {
     let showHeartRate: Bool
     let maxHeartRateBPM: Double?
     let avgHeartRateBPM: Double?
+    var compact: Bool = false
+
+    private var columns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: compact ? 8 : 12),
+            GridItem(.flexible(), spacing: compact ? 8 : 12)
+        ]
+    }
 
     var body: some View {
         let strings = settings.strings
         let units = settings.unitSystem
 
-        VStack(spacing: 12) {
-            // Row 1: Duration & Distance
-            HStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: compact ? 8 : 12) {
+            LazyVGrid(columns: columns, spacing: compact ? 8 : 12) {
                 StatCard(
                     icon: "timer",
                     title: strings.duration,
                     value: durationFormatted,
-                    unit: ""
+                    unit: "",
+                    accent: SkiPalette.primary,
+                    compact: compact
                 )
                 StatCard(
                     icon: "point.topleft.down.to.point.bottomright.curvepath",
                     title: strings.distance,
                     value: settings.formatDistance(distanceKm),
-                    unit: units.distanceUnit
+                    unit: units.distanceUnit,
+                    accent: SkiPalette.cyan,
+                    compact: compact
                 )
-            }
-
-            // Row 2: Max Speed & Avg Speed
-            HStack(spacing: 16) {
                 StatCard(
                     icon: "gauge.with.needle.fill",
                     title: strings.maxSpeed,
                     value: settings.formatSpeed(maxSpeedKmh),
-                    unit: units.speedUnit
+                    unit: units.speedUnit,
+                    accent: SkiPalette.yellow,
+                    compact: compact
                 )
                 StatCard(
                     icon: "speedometer",
                     title: strings.avgSpeed,
                     value: settings.formatSpeed(avgSpeedKmh),
-                    unit: units.speedUnit
+                    unit: units.speedUnit,
+                    accent: SkiPalette.primary,
+                    compact: compact
                 )
-            }
-
-            // Row 3: Max Altitude & Elevation Drop
-            HStack(spacing: 16) {
                 StatCard(
                     icon: "mountain.2.fill",
                     title: strings.maxAltitude,
                     value: settings.formatAltitude(maxAltitude),
-                    unit: units.altitudeUnit
+                    unit: units.altitudeUnit,
+                    accent: SkiPalette.green,
+                    compact: compact
                 )
                 StatCard(
                     icon: "arrow.down.right",
                     title: strings.elevationDrop,
                     value: settings.formatAltitude(elevationDrop),
-                    unit: units.altitudeUnit
+                    unit: units.altitudeUnit,
+                    accent: SkiPalette.green,
+                    compact: compact
                 )
-            }
 
-            // Row 4: Heart Rate (optional, local-only)
-            if showHeartRate {
-                HStack(spacing: 16) {
+                if showHeartRate {
                     StatCard(
                         icon: "heart.fill",
                         title: strings.maxHeartRate,
                         value: heartRateText(maxHeartRateBPM),
-                        unit: strings.heartRateUnit
+                        unit: strings.heartRateUnit,
+                        accent: SkiPalette.red,
+                        compact: compact
                     )
                     StatCard(
                         icon: "heart.text.square.fill",
                         title: strings.avgHeartRate,
                         value: heartRateText(avgHeartRateBPM),
-                        unit: strings.heartRateUnit
+                        unit: strings.heartRateUnit,
+                        accent: SkiPalette.red,
+                        compact: compact
                     )
                 }
             }
 
-            // Point count (subtle)
             Text("\(strings.trackPoints): \(pointCount)")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(SkiPalette.textTertiary)
+                .padding(.horizontal, 4)
         }
-        .padding(.horizontal)
     }
 
     private func heartRateText(_ value: Double?) -> String {
@@ -105,58 +116,70 @@ struct StatsView: View {
 
 // MARK: - StatCard
 
-/// A single statistic card with icon, title, value, and unit.
+/// A single metric tile styled to match the alpine redesign.
 struct StatCard: View {
     let icon: String
     let title: String
     let value: String
     let unit: String
+    var accent: Color = SkiPalette.primary
+    var compact: Bool = false
 
     var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(.blue)
-                .frame(width: 28)
+        SkiGlassCard(cornerRadius: compact ? 18 : 24, padding: compact ? 10 : 16) {
+            VStack(alignment: .leading, spacing: compact ? 8 : 16) {
+                HStack(spacing: compact ? 7 : 10) {
+                    SkiIconBadge(systemName: icon, tint: accent, size: compact ? 28 : 38)
+                    Text(title)
+                        .font(.system(size: compact ? 10 : 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(SkiPalette.textSecondary)
+                        .lineLimit(compact ? 1 : 2)
+                        .minimumScaleFactor(0.72)
+                    Spacer(minLength: 0)
+                }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(value)
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                        .font(.system(size: compact ? 19 : 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(SkiPalette.textPrimary)
                         .monospacedDigit()
+                        .minimumScaleFactor(0.72)
                     if !unit.isEmpty {
                         Text(unit)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(.system(size: compact ? 10 : 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(SkiPalette.textSecondary)
+                            .lineLimit(1)
                     }
                 }
-            }
 
-            Spacer()
+                Capsule()
+                    .fill(accent.opacity(0.95))
+                    .frame(width: compact ? 28 : 40, height: compact ? 3 : 4)
+            }
+            .frame(maxWidth: .infinity, minHeight: compact ? 76 : 118, alignment: .leading)
         }
-        .padding(10)
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
     }
 }
 
 // MARK: - Preview
 
 #Preview {
-    StatsView(
-        durationFormatted: "12:34",
-        distanceKm: 3.45,
-        maxSpeedKmh: 67.2,
-        avgSpeedKmh: 32.1,
-        maxAltitude: 2450,
-        elevationDrop: 680,
-        pointCount: 1234,
-        showHeartRate: true,
-        maxHeartRateBPM: 172,
-        avgHeartRateBPM: 146
-    )
+    SkiScreenBackground {
+        ScrollView {
+            StatsView(
+                durationFormatted: "12:34",
+                distanceKm: 3.45,
+                maxSpeedKmh: 67.2,
+                avgSpeedKmh: 32.1,
+                maxAltitude: 2450,
+                elevationDrop: 680,
+                pointCount: 1234,
+                showHeartRate: true,
+                maxHeartRateBPM: 172,
+                avgHeartRateBPM: 146
+            )
+            .padding(24)
+        }
+    }
+    .preferredColorScheme(.dark)
 }

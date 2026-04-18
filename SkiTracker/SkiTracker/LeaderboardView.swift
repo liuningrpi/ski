@@ -30,29 +30,25 @@ struct LeaderboardView: View {
         let strings = settings.strings
 
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    categoryTabs
-                    metricTabs
-                    podiumBoard
-                    rankingTable
+            SkiScreenBackground {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        categoryTabs
+                        metricTabs
+                        podiumBoard
+                        rankingTable
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 20)
             }
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(.systemYellow).opacity(0.08),
-                        Color(.systemBackground),
-                        Color(.systemBlue).opacity(0.05)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
             .navigationTitle(strings.leaderboard)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(strings.close) {
@@ -81,6 +77,7 @@ struct LeaderboardView: View {
         }
         .pickerStyle(.segmented)
         .padding(.top, 8)
+        .tint(SkiPalette.primary)
     }
 
     private var metricTabs: some View {
@@ -91,13 +88,19 @@ struct LeaderboardView: View {
                         selectedMetric = metric
                     } label: {
                         Text(metricTitle(metric))
-                            .font(.footnote)
-                            .fontWeight(.semibold)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .lineLimit(1)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(selectedMetric == metric ? Color.blue : Color(.systemGray6))
-                            .foregroundColor(selectedMetric == metric ? .white : .primary)
-                            .cornerRadius(16)
+                            .background(
+                                selectedMetric == metric ? SkiPalette.primary.opacity(0.95) : Color.black.opacity(0.24),
+                                in: Capsule()
+                            )
+                            .foregroundStyle(selectedMetric == metric ? .white : SkiPalette.textSecondary)
+                            .overlay(
+                                Capsule()
+                                    .stroke(selectedMetric == metric ? SkiPalette.primary.opacity(0.6) : SkiPalette.stroke, lineWidth: 1)
+                            )
                     }
                     .buttonStyle(.plain)
                 }
@@ -106,37 +109,41 @@ struct LeaderboardView: View {
     }
 
     private var podiumBoard: some View {
+        SkiGlassCard(cornerRadius: 28, padding: 16) {
         VStack(alignment: .leading, spacing: 12) {
             Text(settings.strings.leaderboardOlympicBoard)
-                .font(.headline)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(SkiPalette.textPrimary)
 
             if leaderboardService.isLoading {
                 HStack {
                     ProgressView()
+                        .tint(SkiPalette.textPrimary)
                     Text(settings.strings.syncing)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(SkiPalette.textSecondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: 120)
             } else if entries.isEmpty {
                 Text(settings.strings.leaderboardNoData)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(SkiPalette.textSecondary)
                     .frame(maxWidth: .infinity, minHeight: 120)
             } else {
-                HStack(alignment: .bottom, spacing: 10) {
-                    podiumSlot(entry: entries.count > 1 ? entries[1] : nil, level: 2)
-                    podiumSlot(entry: entries.first, level: 1)
-                    podiumSlot(entry: entries.count > 2 ? entries[2] : nil, level: 3)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .bottom, spacing: 10) {
+                        podiumSlot(entry: entries.count > 1 ? entries[1] : nil, level: 2)
+                        podiumSlot(entry: entries.first, level: 1)
+                        podiumSlot(entry: entries.count > 2 ? entries[2] : nil, level: 3)
+                    }
+                    VStack(spacing: 10) {
+                        podiumSlot(entry: entries.first, level: 1)
+                        podiumSlot(entry: entries.count > 1 ? entries[1] : nil, level: 2)
+                        podiumSlot(entry: entries.count > 2 ? entries[2] : nil, level: 3)
+                    }
                 }
                 .frame(maxWidth: .infinity)
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(.systemGray5), lineWidth: 1)
-        )
+        }
     }
 
     @ViewBuilder
@@ -157,38 +164,47 @@ struct LeaderboardView: View {
 
             if let entry {
                 Text(entry.displayName)
-                    .font(.subheadline)
+                    .font(.system(size: 14, weight: entry.uid == authService.currentUser?.uid ? .bold : .semibold, design: .rounded))
                     .fontWeight(entry.uid == authService.currentUser?.uid ? .semibold : .regular)
+                    .foregroundStyle(SkiPalette.textPrimary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Text(scoreText(for: entry))
-                    .font(.caption)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
                     .monospacedDigit()
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(SkiPalette.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             } else {
                 Text("-")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(SkiPalette.textSecondary)
                 Text("--")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(SkiPalette.textSecondary)
             }
         }
         .frame(maxWidth: .infinity, minHeight: boxHeight)
         .padding(.horizontal, 8)
         .padding(.vertical, 12)
-        .background(rankColor(level).opacity(0.10))
-        .cornerRadius(14)
+        .background(rankColor(level).opacity(0.16), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(rankColor(level).opacity(0.35), lineWidth: 1)
+        )
     }
 
     private var rankingTable: some View {
+        SkiGlassCard(cornerRadius: 28, padding: 16) {
         VStack(alignment: .leading, spacing: 10) {
             Text(settings.strings.leaderboardFullRank)
-                .font(.headline)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(SkiPalette.textPrimary)
 
             if let error = leaderboardService.errorMessage, !error.isEmpty {
                 Text(error)
-                    .font(.caption)
-                    .foregroundColor(.red)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(SkiPalette.red)
             }
 
             VStack(spacing: 0) {
@@ -198,44 +214,48 @@ struct LeaderboardView: View {
                             .font(.subheadline)
                             .fontWeight(.bold)
                             .frame(width: 42)
-                            .foregroundColor(rankColor(entry.rank))
+                            .foregroundStyle(rankColor(entry.rank))
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(entry.displayName)
-                                .font(.subheadline)
-                                .fontWeight(entry.uid == authService.currentUser?.uid ? .semibold : .regular)
+                                .font(.system(size: 14, weight: entry.uid == authService.currentUser?.uid ? .bold : .semibold, design: .rounded))
+                                .foregroundStyle(SkiPalette.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
                             if entry.uid == authService.currentUser?.uid {
                                 Text(settings.strings.youLabel)
                                     .font(.caption2)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(SkiPalette.textSecondary)
                             }
                         }
 
                         Spacer()
 
                         Text(scoreText(for: entry))
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            .foregroundStyle(SkiPalette.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 12)
 
                     if entry.id != entries.last?.id {
-                        Divider()
+                        Divider().overlay(SkiPalette.stroke)
                     }
                 }
             }
-            .background(Color(.systemBackground))
-            .cornerRadius(16)
+            .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color(.systemGray5), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(SkiPalette.stroke, lineWidth: 1)
             )
 
             Text(leaderboardFooterText)
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(SkiPalette.textSecondary)
+        }
         }
     }
 
@@ -320,10 +340,10 @@ struct LeaderboardView: View {
 
     private func rankColor(_ rank: Int) -> Color {
         switch rank {
-        case 1: return Color(red: 0.80, green: 0.63, blue: 0.10)
-        case 2: return Color(red: 0.55, green: 0.60, blue: 0.70)
-        case 3: return Color(red: 0.65, green: 0.43, blue: 0.25)
-        default: return .primary
+        case 1: return SkiPalette.yellow
+        case 2: return SkiPalette.cyan.opacity(0.75)
+        case 3: return SkiPalette.orange
+        default: return SkiPalette.textPrimary
         }
     }
 

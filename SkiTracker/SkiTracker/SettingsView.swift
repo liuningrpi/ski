@@ -30,216 +30,210 @@ struct SettingsView: View {
         let strings = settings.strings
 
         NavigationStack {
-            List {
-                // Account Section
-                AccountView()
+            SkiScreenBackground {
+                List {
+                    // Account Section
+                    AccountView()
 
-                // Sign In button (if not logged in)
-                if !authService.isLoggedIn {
-                    Section {
-                        Button {
-                            showLogin = true
-                        } label: {
-                            HStack {
-                                Spacer()
-                                Text(strings.signIn)
-                                    .fontWeight(.semibold)
-                                Spacer()
-                            }
-                        }
-                    }
-                }
-
-                // Language Section (menu style to save vertical space)
-                Section {
-                    Menu {
-                        ForEach(AppLanguage.allCases, id: \.self) { lang in
+                    // Sign In button (if not logged in)
+                    if !authService.isLoggedIn {
+                        Section {
                             Button {
-                                settings.language = lang
+                                showLogin = true
                             } label: {
-                                if settings.language == lang {
-                                    Label(lang.displayName, systemImage: "checkmark")
-                                } else {
-                                    Text(lang.displayName)
+                                SkiPrimaryButtonLabel(title: strings.signIn, systemName: "person.crop.circle")
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                    }
+
+                    // Language Section (menu style to save vertical space)
+                    Section {
+                        Menu {
+                            ForEach(AppLanguage.allCases, id: \.self) { lang in
+                                Button {
+                                    settings.language = lang
+                                } label: {
+                                    if settings.language == lang {
+                                        Label(lang.displayName, systemImage: "checkmark")
+                                    } else {
+                                        Text(lang.displayName)
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text("Language")
+                                    .foregroundStyle(SkiPalette.textPrimary)
+                                Spacer()
+                                Text(settings.language.displayName)
+                                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                                    .foregroundStyle(SkiPalette.textSecondary)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                                    .foregroundStyle(SkiPalette.textSecondary)
+                            }
+                        }
+                    } header: {
+                        Label("Language", systemImage: "globe")
+                    }
+                    .listRowBackground(Color.clear)
+
+                    // Units Section
+                    Section {
+                        ForEach(UnitSystem.allCases, id: \.self) { unit in
+                            Button {
+                                settings.unitSystem = unit
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(unitDisplayName(unit))
+                                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(SkiPalette.textPrimary)
+                                        Text(unitDescription(unit))
+                                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                                            .foregroundStyle(SkiPalette.textSecondary)
+                                    }
+                                    Spacer()
+                                    if settings.unitSystem == unit {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(SkiPalette.primary)
+                                    }
                                 }
                             }
                         }
-                    } label: {
-                        HStack {
-                            Text("Language")
-                            Spacer()
-                            Text(settings.language.displayName)
-                                .foregroundColor(.secondary)
-                            Image(systemName: "chevron.down")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                    } header: {
+                        Label(strings.unitsLabel, systemImage: "ruler")
                     }
-                } header: {
-                    Label("Language", systemImage: "globe")
-                }
+                    .listRowBackground(Color.clear)
 
-                // Units Section
-                Section {
-                    ForEach(UnitSystem.allCases, id: \.self) { unit in
+                    // Location Permission Section
+                    Section {
+                        HStack {
+                            Circle()
+                                .fill(tracker.canTrack ? SkiPalette.green : SkiPalette.orange)
+                                .frame(width: 10, height: 10)
+                            Text(permissionStatusText)
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundStyle(SkiPalette.textSecondary)
+                        }
+
+                        if tracker.authorizationStatus == .notDetermined {
+                            Button {
+                                tracker.requestPermission()
+                            } label: {
+                                SkiSecondaryButtonLabel(title: strings.authorizeLocation, systemName: "location.fill")
+                            }
+                        }
+
+                        if tracker.authorizationStatus == .denied {
+                            Button {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                SkiSecondaryButtonLabel(title: strings.goToSettings, systemName: "gearshape")
+                            }
+                        }
+
+                        if tracker.authorizationStatus == .authorizedWhenInUse {
+                            Button {
+                                tracker.requestAlwaysPermission()
+                            } label: {
+                                SkiSecondaryButtonLabel(title: requestAlwaysText, systemName: "arrow.up.circle")
+                            }
+                        }
+
+                        Text(permissionDetailText)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(SkiPalette.textSecondary)
+                    } header: {
+                        Label(permissionSectionTitle, systemImage: "location.circle")
+                    }
+                    .listRowBackground(Color.clear)
+
+                    // Performance Sampling Mode
+                    Section {
+                        Toggle(isOn: $settings.performanceModeEnabled) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(strings.performanceModeTitle)
+                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(SkiPalette.textPrimary)
+                                Text(strings.performanceModeDescription)
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundStyle(SkiPalette.textSecondary)
+                            }
+                        }
+                        .tint(SkiPalette.primary)
+                    } header: {
+                        Label(strings.performanceSection, systemImage: "speedometer")
+                    }
+                    .listRowBackground(Color.clear)
+
+                    if shouldShowSupportSection {
+                        Section {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(strings.supportHeadline)
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(SkiPalette.textPrimary)
+
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 12) {
+                                        supportOptionButtons
+                                    }
+                                    VStack(spacing: 10) {
+                                        supportOptionButtons
+                                    }
+                                }
+
+                                if !supportStatusText.isEmpty {
+                                    Text(supportStatusText)
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .foregroundStyle(SkiPalette.textSecondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        } header: {
+                            Label(strings.supportTitle, systemImage: "cup.and.saucer.fill")
+                        }
+                        .listRowBackground(Color.clear)
+                    }
+
+                    // Feedback Section
+                    Section {
                         Button {
-                            settings.unitSystem = unit
+                            showFeedbackSheet = true
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(unitDisplayName(unit))
-                                        .foregroundColor(.primary)
-                                    Text(unitDescription(unit))
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                            HStack(spacing: 12) {
+                                SkiIconBadge(systemName: "envelope.fill", tint: SkiPalette.primary, size: 36)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(strings.feedbackButton)
+                                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                                        .foregroundStyle(SkiPalette.textPrimary)
+                                    Text(strings.feedbackDescription)
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .foregroundStyle(SkiPalette.textSecondary)
+                                        .lineLimit(2)
                                 }
                                 Spacer()
-                                if settings.unitSystem == unit {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                    }
-                } header: {
-                    Label(strings.unitsLabel, systemImage: "ruler")
-                }
-
-                // Location Permission Section
-                Section {
-                    HStack {
-                        Circle()
-                            .fill(tracker.canTrack ? Color.green : Color.orange)
-                            .frame(width: 10, height: 10)
-                        Text(permissionStatusText)
-                            .foregroundColor(.secondary)
-                    }
-
-                    if tracker.authorizationStatus == .notDetermined {
-                        Button {
-                            tracker.requestPermission()
-                        } label: {
-                            HStack {
-                                Image(systemName: "location.fill")
-                                Text(strings.authorizeLocation)
-                            }
-                        }
-                    }
-
-                    if tracker.authorizationStatus == .denied {
-                        Button {
-                            if let url = URL(string: UIApplication.openSettingsURLString) {
-                                UIApplication.shared.open(url)
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: "gearshape")
-                                Text(strings.goToSettings)
-                            }
-                        }
-                    }
-
-                if tracker.authorizationStatus == .authorizedWhenInUse {
-                    Button {
-                        tracker.requestAlwaysPermission()
-                        } label: {
-                            HStack {
-                                Image(systemName: "arrow.up.circle")
-                                Text(requestAlwaysText)
-                            }
-                        }
-                    }
-
-                    Text(permissionDetailText)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } header: {
-                    Label(permissionSectionTitle, systemImage: "location.circle")
-                }
-
-                // Performance Sampling Mode
-                Section {
-                    Toggle(isOn: $settings.performanceModeEnabled) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(strings.performanceModeTitle)
-                            Text(strings.performanceModeDescription)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                } header: {
-                    Label(strings.performanceSection, systemImage: "speedometer")
-                }
-
-                if shouldShowSupportSection {
-                    Section {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(strings.supportHeadline)
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-
-                            HStack(spacing: 12) {
-                                ForEach(tipJarStore.options) { option in
-                                    let isPurchasing = tipJarStore.activePurchaseID == option.id
-                                    Button {
-                                        Task {
-                                            await tipJarStore.purchase(option: option)
-                                        }
-                                    } label: {
-                                        VStack(spacing: 4) {
-                                            Text(buttonTitle(for: option))
-                                                .font(.headline)
-                                            Text(buttonSubtitle(for: option))
-                                                .font(.caption)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .disabled(isPurchasing || tipJarStore.isLoading)
-                                }
-                            }
-
-                            if !supportStatusText.isEmpty {
-                                Text(supportStatusText)
+                                Image(systemName: "chevron.right")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(SkiPalette.textSecondary)
                             }
                         }
-                        .padding(.vertical, 4)
                     } header: {
-                        Label(strings.supportTitle, systemImage: "cup.and.saucer.fill")
+                        Label(strings.feedbackTitle, systemImage: "text.bubble")
                     }
+                    .listRowBackground(Color.clear)
                 }
-
-                // Feedback Section
-                Section {
-                    Button {
-                        showFeedbackSheet = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "envelope.fill")
-                                .foregroundColor(.blue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(strings.feedbackButton)
-                                    .foregroundColor(.primary)
-                                Text(strings.feedbackDescription)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                } header: {
-                    Label(strings.feedbackTitle, systemImage: "text.bubble")
-                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
             }
-            .listStyle(.insetGrouped)
             .navigationTitle(strings.settings)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .task {
                 await tipJarStore.loadProducts()
             }
@@ -261,6 +255,49 @@ struct SettingsView: View {
                     onSend: sendFeedback
                 )
             }
+        }
+    }
+
+    @ViewBuilder
+    private var supportOptionButtons: some View {
+        ForEach(tipJarStore.options) { option in
+            let isPurchasing = tipJarStore.activePurchaseID == option.id
+            Button {
+                Task {
+                    await tipJarStore.purchase(option: option)
+                }
+            } label: {
+                VStack(spacing: 4) {
+                    if isPurchasing {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                    Text(buttonTitle(for: option))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Text(buttonSubtitle(for: option))
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .padding(.horizontal, 12)
+                .background(
+                    LinearGradient(
+                        colors: option.id == TipJarStore.smallTipID
+                            ? [SkiPalette.orange, SkiPalette.yellow]
+                            : [SkiPalette.primary, SkiPalette.cyan],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isPurchasing || tipJarStore.isLoading)
         }
     }
 
@@ -415,131 +452,109 @@ struct FeedbackSheetView: View {
         let strings = settings.strings
 
         NavigationStack {
-            VStack(spacing: 16) {
-                Text(strings.feedbackDescription)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(.top)
+            SkiScreenBackground {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        SkiGlassCard(cornerRadius: 28, padding: 16) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text(strings.feedbackDescription)
+                                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                                    .foregroundStyle(SkiPalette.textSecondary)
 
-                TextEditor(text: $feedbackText)
-                    .frame(minHeight: 150)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(10)
-                    .overlay(
-                        Group {
-                            if feedbackText.isEmpty {
-                                Text(strings.feedbackPlaceholder)
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 16)
-                            }
-                        },
-                        alignment: .topLeading
-                    )
-                    .disabled(feedbackStatus == .sending || feedbackStatus == .sent)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    PhotosPicker(
-                        selection: $selectedScreenshotItems,
-                        maxSelectionCount: 2,
-                        matching: .images
-                    ) {
-                        Label(
-                            strings.feedbackAddScreenshots,
-                            systemImage: "photo.on.rectangle.angled"
-                        )
-                        .font(.subheadline)
-                    }
-                    .disabled(feedbackStatus == .sending || feedbackStatus == .sent)
-
-                    if !feedbackImages.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(Array(feedbackImages.enumerated()), id: \.offset) { index, image in
-                                    ZStack(alignment: .topTrailing) {
-                                        Image(uiImage: image)
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: 108, height: 108)
-                                            .clipped()
-                                            .cornerRadius(10)
-
-                                        Button {
-                                            feedbackImages.remove(at: index)
-                                            if index < selectedScreenshotItems.count {
-                                                selectedScreenshotItems.remove(at: index)
+                                TextEditor(text: $feedbackText)
+                                    .frame(minHeight: 150)
+                                    .scrollContentBackground(.hidden)
+                                    .padding(10)
+                                    .foregroundStyle(SkiPalette.textPrimary)
+                                    .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                            .stroke(SkiPalette.stroke, lineWidth: 1)
+                                    )
+                                    .overlay(
+                                        Group {
+                                            if feedbackText.isEmpty {
+                                                Text(strings.feedbackPlaceholder)
+                                                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                                                    .foregroundStyle(SkiPalette.textTertiary)
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 18)
                                             }
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .foregroundColor(.white)
-                                                .background(Color.black.opacity(0.5))
-                                                .clipShape(Circle())
+                                        },
+                                        alignment: .topLeading
+                                    )
+                                    .disabled(feedbackStatus == .sending || feedbackStatus == .sent)
+
+                                VStack(alignment: .leading, spacing: 10) {
+                                    PhotosPicker(
+                                        selection: $selectedScreenshotItems,
+                                        maxSelectionCount: 2,
+                                        matching: .images
+                                    ) {
+                                        SkiSecondaryButtonLabel(
+                                            title: strings.feedbackAddScreenshots,
+                                            systemName: "photo.on.rectangle.angled"
+                                        )
+                                    }
+                                    .disabled(feedbackStatus == .sending || feedbackStatus == .sent)
+
+                                    if !feedbackImages.isEmpty {
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            HStack(spacing: 10) {
+                                                ForEach(Array(feedbackImages.enumerated()), id: \.offset) { index, image in
+                                                    ZStack(alignment: .topTrailing) {
+                                                        Image(uiImage: image)
+                                                            .resizable()
+                                                            .scaledToFill()
+                                                            .frame(width: 108, height: 108)
+                                                            .clipped()
+                                                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                                                        Button {
+                                                            feedbackImages.remove(at: index)
+                                                            if index < selectedScreenshotItems.count {
+                                                                selectedScreenshotItems.remove(at: index)
+                                                            }
+                                                        } label: {
+                                                            Image(systemName: "xmark.circle.fill")
+                                                                .foregroundStyle(.white)
+                                                                .background(Color.black.opacity(0.5), in: Circle())
+                                                        }
+                                                        .padding(6)
+                                                    }
+                                                }
+                                            }
                                         }
-                                        .padding(6)
                                     }
                                 }
                             }
                         }
-                    }
-                }
 
-                // Status message
-                if feedbackStatus == .sent {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text(strings.feedbackSent)
-                            .foregroundColor(.green)
-                    }
-                    .font(.subheadline)
-                } else if feedbackStatus == .failed {
-                    HStack {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
-                        Text(strings.feedbackFailed)
-                            .foregroundColor(.red)
-                    }
-                    .font(.subheadline)
-                } else if feedbackStatus == .dailyLimitExceeded {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text(strings.feedbackDailyLimitExceeded)
-                            .foregroundColor(.orange)
-                    }
-                    .font(.subheadline)
-                }
+                        feedbackStatusMessage
 
-                Spacer()
-
-                // Send button
-                Button {
-                    onSend()
-                } label: {
-                    HStack {
-                        if feedbackStatus == .sending {
-                            ProgressView()
-                                .tint(.white)
-                            Text(strings.feedbackSending)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                            Text(strings.feedbackButton)
+                        Button {
+                            onSend()
+                        } label: {
+                            SkiPrimaryButtonLabel(
+                                title: feedbackStatus == .sending ? strings.feedbackSending : strings.feedbackButton,
+                                systemName: feedbackStatus == .sending ? nil : "paperplane.fill",
+                                colors: canSend ? [SkiPalette.primary, SkiPalette.cyan] : [Color.gray.opacity(0.75), Color.gray.opacity(0.55)],
+                                isLoading: feedbackStatus == .sending
+                            )
                         }
+                        .disabled(!canSend)
                     }
-                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: 640)
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(canSend ? Color.blue : Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
                 }
-                .disabled(!canSend)
-                .padding(.bottom)
             }
-            .padding(.horizontal)
             .navigationTitle(strings.feedbackTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .onChange(of: selectedScreenshotItems) { _, newItems in
                 Task {
                     var loaded: [UIImage] = []
@@ -562,6 +577,36 @@ struct FeedbackSheetView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var feedbackStatusMessage: some View {
+        let strings = settings.strings
+        if feedbackStatus == .sent {
+            statusMessage(icon: "checkmark.circle.fill", text: strings.feedbackSent, tint: SkiPalette.green)
+        } else if feedbackStatus == .failed {
+            statusMessage(icon: "xmark.circle.fill", text: strings.feedbackFailed, tint: SkiPalette.red)
+        } else if feedbackStatus == .dailyLimitExceeded {
+            statusMessage(icon: "exclamationmark.triangle.fill", text: strings.feedbackDailyLimitExceeded, tint: SkiPalette.orange)
+        }
+    }
+
+    private func statusMessage(icon: String, text: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+            Text(text)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 13, weight: .semibold, design: .rounded))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.28), lineWidth: 1)
+        )
     }
 
     private var canSend: Bool {

@@ -18,36 +18,46 @@ struct FriendsView: View {
         let strings = settings.strings
 
         NavigationStack {
-            List {
-                if let currentUser = authService.currentUser {
-                    inviteSection(user: currentUser)
-                    addFriendSection(user: currentUser)
-                    friendListSection(currentUser: currentUser)
-                } else {
-                    Section {
-                        Text(strings.signInToManageFriends)
-                            .foregroundColor(.secondary)
+            SkiScreenBackground {
+                List {
+                    if let currentUser = authService.currentUser {
+                        inviteSection(user: currentUser)
+                        addFriendSection(user: currentUser)
+                        friendListSection(currentUser: currentUser)
+                    } else {
+                        Section {
+                            Text(strings.signInToManageFriends)
+                                .foregroundStyle(SkiPalette.textSecondary)
+                        }
+                        .listRowBackground(Color.clear)
                     }
-                }
 
-                if let status = friendService.statusMessage, !status.isEmpty {
-                    Section {
-                        Text(status)
-                            .font(.caption)
-                            .foregroundColor(.green)
+                    if let status = friendService.statusMessage, !status.isEmpty {
+                        Section {
+                            Text(status)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(SkiPalette.green)
+                        }
+                        .listRowBackground(Color.clear)
                     }
-                }
 
-                if let error = friendService.errorMessage, !error.isEmpty {
-                    Section {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundColor(.red)
+                    if let error = friendService.errorMessage, !error.isEmpty {
+                        Section {
+                            Text(error)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(SkiPalette.red)
+                        }
+                        .listRowBackground(Color.clear)
                     }
                 }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
             }
             .navigationTitle(strings.friends)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(strings.close) { dismiss() }
@@ -96,21 +106,22 @@ struct FriendsView: View {
 
                 Text(link.absoluteString)
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(SkiPalette.textSecondary)
                     .textSelection(.enabled)
 
                 ShareLink(item: link) {
-                    Label(strings.shareInviteLink, systemImage: "square.and.arrow.up")
+                    SkiSecondaryButtonLabel(title: strings.shareInviteLink, systemName: "square.and.arrow.up")
                 }
 
                 Button {
                     UIPasteboard.general.string = link.absoluteString
                     friendService.statusMessage = strings.inviteLinkCopied
                 } label: {
-                    Label(strings.copyInviteLink, systemImage: "doc.on.doc")
+                    SkiSecondaryButtonLabel(title: strings.copyInviteLink, systemName: "doc.on.doc")
                 }
             }
         }
+        .listRowBackground(Color.clear)
     }
 
     @ViewBuilder
@@ -128,15 +139,16 @@ struct FriendsView: View {
                     inputCode = ""
                 }
             } label: {
-                Label(strings.addByCodeOrLink, systemImage: "person.crop.circle.badge.plus")
+                SkiPrimaryButtonLabel(title: strings.addByCodeOrLink, systemName: "person.crop.circle.badge.plus")
             }
 
             Button {
                 startQRScan()
             } label: {
-                Label(strings.scanFriendQRCode, systemImage: "qrcode.viewfinder")
+                SkiSecondaryButtonLabel(title: strings.scanFriendQRCode, systemName: "qrcode.viewfinder")
             }
         }
+        .listRowBackground(Color.clear)
     }
 
     @ViewBuilder
@@ -147,27 +159,28 @@ struct FriendsView: View {
             if friendService.isLoading {
                 HStack {
                     ProgressView()
+                        .tint(SkiPalette.textPrimary)
                     Text(strings.loadingFriends)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(SkiPalette.textSecondary)
                 }
             } else if friendService.friends.isEmpty {
                 Text(strings.noFriendsYet)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(SkiPalette.textSecondary)
             } else {
                 ForEach(friendService.friends) { friend in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(friend.displayName)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(SkiPalette.textPrimary)
                         if let email = friend.email, !email.isEmpty {
                             Text(email)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(SkiPalette.textSecondary)
                         }
                         if friend.hiddenInCompetition {
                             Text(strings.friendHiddenBadge)
                                 .font(.caption2)
-                                .foregroundColor(.orange)
+                                .foregroundStyle(SkiPalette.orange)
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -198,6 +211,7 @@ struct FriendsView: View {
                 }
             }
         }
+        .listRowBackground(Color.clear)
     }
 
     // MARK: - Helpers

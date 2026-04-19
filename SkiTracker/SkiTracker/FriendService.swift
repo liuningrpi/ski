@@ -84,7 +84,7 @@ final class FriendService: ObservableObject {
                 let addedAt = (data["addedAt"] as? Timestamp)?.dateValue()
                 let hiddenInCompetition = data["hiddenInCompetition"] as? Bool ?? false
                 let accepted = data["accepted"] as? Bool ?? true
-                let name = (displayName?.isEmpty == false ? displayName : nil) ?? email ?? "User"
+                let name = preferredName(from: displayName) ?? "Skier"
                 return AppFriend(
                     id: doc.documentID,
                     uid: doc.documentID,
@@ -160,12 +160,13 @@ final class FriendService: ObservableObject {
 
             let targetData = targetDoc.data() ?? [:]
             let targetName = (targetData["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let targetEmail = targetData["email"] as? String
-            let finalTargetName = (targetName?.isEmpty == false ? targetName : nil) ?? targetEmail ?? "User"
+            let finalTargetName = preferredName(from: targetName) ?? "Skier"
 
             let currentData = currentDoc.data() ?? [:]
             let currentNameRaw = (currentData["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let currentName = (currentNameRaw?.isEmpty == false ? currentNameRaw : nil) ?? currentUser.displayName ?? currentUser.email ?? "User"
+            let currentName = preferredName(from: currentNameRaw)
+                ?? preferredName(from: currentUser.displayName)
+                ?? "Skier"
             let currentEmail = (currentData["email"] as? String) ?? currentUser.email
 
             let currentToFriendRef = friendsCollection(uid: currentUser.uid).document(friendUID)
@@ -184,7 +185,7 @@ final class FriendService: ObservableObject {
             batch.setData([
                 "uid": friendUID,
                 "displayName": finalTargetName,
-                "email": targetEmail ?? "",
+                "email": "",
                 "accepted": true,
                 "hiddenInCompetition": false,
                 "addedAt": FieldValue.serverTimestamp(),
@@ -321,6 +322,14 @@ final class FriendService: ObservableObject {
 
     private func userDocument(uid: String) -> DocumentReference {
         db.collection("users").document(uid)
+    }
+
+    private func preferredName(from raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.contains("@") { return nil }
+        return trimmed
     }
 
     private func friendsCollection(uid: String) -> CollectionReference {

@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import PhotosUI
 
 // MARK: - Login View
 
@@ -132,6 +133,10 @@ struct AccountView: View {
     @EnvironmentObject var sessionStore: SessionStore
 
     @State private var showSignOutConfirm = false
+    @State private var selectedHeadshotItem: PhotosPickerItem?
+    @State private var headshotImage: UIImage?
+    @State private var isSavingHeadshot = false
+    @State private var headshotStatusMessage = ""
 
     var body: some View {
         let strings = settings.strings
@@ -141,24 +146,45 @@ struct AccountView: View {
             Section {
                 // User info
                 HStack(spacing: 12) {
-                    SkiIconBadge(
-                        systemName: user.provider == "apple" ? "apple.logo" : "g.circle.fill",
-                        tint: user.provider == "apple" ? SkiPalette.textPrimary : SkiPalette.red,
-                        size: 40
-                    )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(user.displayName ?? user.email ?? "User")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(SkiPalette.textPrimary)
-                        if let email = user.email {
-                            Text(email)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundStyle(SkiPalette.textSecondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.78)
+                    Group {
+                        if let image = headshotImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Image(systemName: user.provider == "apple" ? "apple.logo" : "g.circle.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(user.provider == "apple" ? SkiPalette.textPrimary : SkiPalette.red)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(.black.opacity(0.2))
                         }
                     }
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(SkiPalette.stroke, lineWidth: 1))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(displayName(for: user))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(SkiPalette.textPrimary)
+                    }
+                }
+
+                PhotosPicker(
+                    selection: $selectedHeadshotItem,
+                    matching: .images
+                ) {
+                    SkiSecondaryButtonLabel(
+                        title: isSavingHeadshot ? "Uploading..." : "Upload Headshot",
+                        systemName: "person.crop.circle.badge.plus"
+                    )
+                }
+                .disabled(isSavingHeadshot)
+
+                if !headshotStatusMessage.isEmpty {
+                    Text(headshotStatusMessage)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(SkiPalette.textSecondary)
                 }
 
                 // Sync button
@@ -192,18 +218,6 @@ struct AccountView: View {
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                 }
 
-                // Friends
-                NavigationLink {
-                    FriendsView()
-                } label: {
-                    HStack {
-                        Image(systemName: "person.2.fill")
-                        Text(strings.friends)
-                    }
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SkiPalette.textPrimary)
-                }
-
                 // Sign out
                 Button(role: .destructive) {
                     showSignOutConfirm = true
@@ -222,6 +236,15 @@ struct AccountView: View {
                 Button(strings.cancel, role: .cancel) { }
                 Button(strings.signOut, role: .destructive) {
                     authService.signOut()
+                }
+            }
+            .task(id: user.uid) {
+                headshotImage = await firestoreService.loadHeadshot(uid: user.uid)
+            }
+            .onChange(of: selectedHeadshotItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    await uploadHeadshot(newItem, uid: user.uid)
                 }
             }
         } else {
@@ -243,6 +266,35 @@ struct AccountView: View {
                 Label(strings.account, systemImage: "person.circle")
             }
             .listRowBackground(Color.clear)
+        }
+    }
+
+    private func displayName(for user: AppUser) -> String {
+        if let name = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        return settings.strings.youLabel
+    }
+
+    @MainActor
+    private func uploadHeadshot(_ item: PhotosPickerItem, uid: String) async {
+        isSavingHeadshot = true
+        headshotStatusMessage = ""
+
+        defer { isSavingHeadshot = false }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                headshotStatusMessage = "Unable to read image."
+                return
+            }
+
+            try await firestoreService.uploadHeadshot(image, uid: uid)
+            headshotImage = image
+            headshotStatusMessage = "Headshot updated."
+        } catch {
+            headshotStatusMessage = error.localizedDescription
         }
     }
 }

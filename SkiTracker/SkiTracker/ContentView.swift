@@ -13,6 +13,7 @@ struct ContentView: View {
 
     @State private var showHistory = false
     @State private var showLeaderboard = false
+    @State private var showFriends = false
     @State private var showSettings = false
     @State private var showStopConfirm = false
     @ObservedObject private var watchHeartRateReceiver = WatchHeartRateReceiver.shared
@@ -83,6 +84,9 @@ struct ContentView: View {
                 LeaderboardView()
                     .environmentObject(sessionStore)
             }
+            .sheet(isPresented: $showFriends) {
+                FriendsView()
+            }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
@@ -115,42 +119,28 @@ struct ContentView: View {
     // MARK: - Top Chrome
 
     private var topChrome: some View {
-        let strings = settings.strings
-
-        return ZStack {
-            HStack {
-                floatingIconButton(systemName: "gearshape.fill", tint: SkiPalette.textPrimary) {
-                    showSettings = true
-                }
-
-                Spacer()
-
-                HStack(spacing: 10) {
-                    floatingIconButton(systemName: "trophy.fill", tint: SkiPalette.yellow) {
-                        showLeaderboard = true
-                    }
-
-                    floatingIconButton(systemName: "clock.arrow.circlepath", tint: SkiPalette.primary) {
-                        showHistory = true
-                    }
-                }
+        HStack(spacing: 10) {
+            // Left-most
+            floatingIconButton(systemName: "person.2.fill", tint: SkiPalette.green) {
+                showFriends = true
             }
 
-            VStack(spacing: 4) {
-                Text(strings.appTitle)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(SkiPalette.textPrimary)
-                Text(tracker.isTracking ? stateName(tracker.segmenter.currentState) : strings.startSkiing)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(SkiPalette.textSecondary)
+            // Second from left
+            floatingIconButton(systemName: "trophy.fill", tint: SkiPalette.yellow) {
+                showLeaderboard = true
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.black.opacity(0.24), in: Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(SkiPalette.stroke, lineWidth: 1)
-            )
+
+            Spacer()
+
+            // Second from right
+            floatingIconButton(systemName: "clock.arrow.circlepath", tint: SkiPalette.primary) {
+                showHistory = true
+            }
+
+            // Right-most
+            floatingIconButton(systemName: "gearshape.fill", tint: SkiPalette.textPrimary) {
+                showSettings = true
+            }
         }
     }
 

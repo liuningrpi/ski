@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import CryptoKit
 import FirebaseFirestore
+import UIKit
 
 // MARK: - Firestore Service
 
@@ -62,6 +63,34 @@ final class FirestoreService: ObservableObject {
             try await userDocument(uid: user.uid).setData(data, merge: true)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func uploadHeadshot(_ image: UIImage, uid: String) async throws {
+        guard let encoded = encodeHeadshot(image) else {
+            throw NSError(domain: "FirestoreService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode headshot image."])
+        }
+
+        try await userDocument(uid: uid).setData([
+            "headshotBase64": encoded,
+            "headshotUpdatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
+    }
+
+    func loadHeadshot(uid: String) async -> UIImage? {
+        do {
+            let snapshot = try await userDocument(uid: uid).getDocument()
+            guard let data = snapshot.data(),
+                  let base64 = data["headshotBase64"] as? String,
+                  let imageData = Data(base64Encoded: base64) else {
+                return nil
+            }
+            return UIImage(data: imageData)
+        } catch {
+            await MainActor.run {
+                self.errorMessage = error.localizedDescription
+            }
+            return nil
         }
     }
 
@@ -324,6 +353,25 @@ final class FirestoreService: ObservableObject {
                 course: 0,
                 timestamp: ts.dateValue()
             )
+        }
+    }
+
+    private func encodeHeadshot(_ image: UIImage) -> String? {
+        let resized = resizedHeadshot(image)
+        guard let data = resized.jpegData(compressionQuality: 0.72) else { return nil }
+        return data.base64EncodedString()
+    }
+
+    private func resizedHeadshot(_ image: UIImage, maxSide: CGFloat = 512) -> UIImage {
+        let size = image.size
+        let longest = max(size.width, size.height)
+        guard longest > maxSide, longest > 0 else { return image }
+
+        let scale = maxSide / longest
+        let targetSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
         }
     }
 

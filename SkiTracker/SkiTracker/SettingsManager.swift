@@ -294,19 +294,28 @@ struct LocalizedStrings {
     }
 
     var performanceModeTitle: String {
-        tr(en: "Performance Mode (1m)", zh: "性能模式 (1m)", es: "Modo rendimiento (1m)", ja: "パフォーマンスモード (1m)", ko: "퍼포먼스 모드 (1m)", fr: "Mode performance (1m)", de: "Leistungsmodus (1m)", it: "Modalita prestazioni (1m)")
+        tr(
+            en: "Faster Sampling",
+            zh: "更快采样",
+            es: "Muestreo rapido",
+            ja: "高速サンプリング",
+            ko: "고속 샘플링",
+            fr: "Echantillonnage rapide",
+            de: "Schnelleres Sampling",
+            it: "Campionamento rapido"
+        )
     }
 
     var performanceModeDescription: String {
         tr(
-            en: "Use 1m high-speed sampling instead of 2m to capture peaks more aggressively (higher battery use).",
-            zh: "高速时把定位采样间距从 2m 降到 1m，峰值更容易捕捉，但更耗电。",
-            es: "Usa muestreo de 1m en alta velocidad en lugar de 2m para capturar mejor picos (mas bateria).",
-            ja: "高速時に2mではなく1m間隔でサンプリングし、ピークを捉えやすくします（バッテリー消費増）。",
-            ko: "고속 구간에서 2m 대신 1m 샘플링으로 피크 포착을 강화합니다(배터리 사용 증가).",
-            fr: "Utilise un echantillonnage 1m a haute vitesse au lieu de 2m pour mieux capter les pics (plus de batterie).",
-            de: "Verwendet bei hoher Geschwindigkeit 1m statt 2m Sampling fur bessere Peak-Erfassung (hoherer Akkuverbrauch).",
-            it: "Usa campionamento a 1m alle alte velocita invece di 2m per catturare meglio i picchi (piu batteria)."
+            en: "Capture location updates more frequently to better catch speed peaks (uses more battery).",
+            zh: "更频繁采集定位更新，更容易捕捉速度峰值（更耗电）。",
+            es: "Captura ubicaciones con mayor frecuencia para detectar mejor los picos de velocidad (consume mas bateria).",
+            ja: "位置更新をより高頻度で取得し、速度ピークを捉えやすくします（バッテリー消費増）。",
+            ko: "위치 업데이트 빈도를 높여 속도 피크를 더 잘 포착합니다(배터리 사용 증가).",
+            fr: "Capture les positions plus frequemment pour mieux detecter les pics de vitesse (consomme plus de batterie).",
+            de: "Erfasst Standortdaten haufiger, um Geschwindigkeits-Spitzen besser zu erkennen (hoherer Akkuverbrauch).",
+            it: "Acquisisce la posizione piu spesso per rilevare meglio i picchi di velocita (consuma piu batteria)."
         )
     }
 

@@ -46,8 +46,15 @@ final class AuthService: NSObject, ObservableObject {
     private static let logger = Logger(subsystem: "com.nliu.SkiTracker", category: "AuthService")
 
     let objectWillChange = ObservableObjectPublisher()
+    private let cachedUserDefaultsKey = "auth_cached_user_v1"
 
     var currentUser: AppUser? {
+        didSet {
+            cacheCurrentUser()
+            objectWillChange.send()
+        }
+    }
+    var isAuthStateResolved: Bool = false {
         didSet { objectWillChange.send() }
     }
     var isSigningIn: Bool = false {
@@ -63,17 +70,26 @@ final class AuthService: NSObject, ObservableObject {
 
     private override init() {
         super.init()
+
+        // Warm start: use locally cached user to avoid login flicker while Firebase restores auth state.
+        if let cachedUser = loadCachedUser() {
+            currentUser = cachedUser
+        }
+
+        // Prefer Firebase persisted auth if already available at launch.
+        if let firebaseUser = Auth.auth().currentUser {
+            currentUser = AppUser(from: firebaseUser, provider: providerName(for: firebaseUser))
+        }
+
         // Listen to auth state changes
         authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             DispatchQueue.main.async {
                 if let user = user {
-                    // Determine provider
-                    let provider = user.providerData.first?.providerID ?? "unknown"
-                    let providerName = provider.contains("apple") ? "apple" : (provider.contains("google") ? "google" : provider)
-                    self?.currentUser = AppUser(from: user, provider: providerName)
+                    self?.currentUser = AppUser(from: user, provider: self?.providerName(for: user) ?? "unknown")
                 } else {
                     self?.currentUser = nil
                 }
+                self?.isAuthStateResolved = true
             }
         }
     }
@@ -247,6 +263,35 @@ final class AuthService: NSObject, ObservableObject {
             topController = presented
         }
         return topController
+    }
+
+    private func providerName(for user: FirebaseAuth.User) -> String {
+        let provider = user.providerData.first?.providerID ?? "unknown"
+        if provider.contains("apple") { return "apple" }
+        if provider.contains("google") { return "google" }
+        return provider
+    }
+
+    private func cacheCurrentUser() {
+        let defaults = UserDefaults.standard
+        guard let currentUser else {
+            defaults.removeObject(forKey: cachedUserDefaultsKey)
+            return
+        }
+
+        do {
+            let data = try JSONEncoder().encode(currentUser)
+            defaults.set(data, forKey: cachedUserDefaultsKey)
+        } catch {
+            defaults.removeObject(forKey: cachedUserDefaultsKey)
+        }
+    }
+
+    private func loadCachedUser() -> AppUser? {
+        guard let data = UserDefaults.standard.data(forKey: cachedUserDefaultsKey) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(AppUser.self, from: data)
     }
 
     private func friendlyGoogleErrorMessage(_ error: Error) -> String {

@@ -50,7 +50,7 @@ struct LeaderboardView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(strings.close) {
                         dismiss()
                     }

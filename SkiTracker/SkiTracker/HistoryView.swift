@@ -378,7 +378,7 @@ struct HistoryView: View {
                 seedExpansionStateIfNeeded()
             }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(strings.close) {
                         dismiss()
                     }

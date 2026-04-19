@@ -24,6 +24,16 @@ struct FriendsView: View {
                         inviteSection(user: currentUser)
                         addFriendSection(user: currentUser)
                         friendListSection(currentUser: currentUser)
+                    } else if !authService.isAuthStateResolved {
+                        Section {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                    .tint(SkiPalette.textPrimary)
+                                Text(strings.loadingFriends)
+                                    .foregroundStyle(SkiPalette.textSecondary)
+                            }
+                        }
+                        .listRowBackground(Color.clear)
                     } else {
                         Section {
                             Text(strings.signInToManageFriends)
@@ -168,20 +178,11 @@ struct FriendsView: View {
                     .foregroundStyle(SkiPalette.textSecondary)
             } else {
                 ForEach(friendService.friends) { friend in
-                    VStack(alignment: .leading, spacing: 2) {
+                    HStack {
                         Text(friend.displayName)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundStyle(SkiPalette.textPrimary)
-                        if let email = friend.email, !email.isEmpty {
-                            Text(email)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundStyle(SkiPalette.textSecondary)
-                        }
-                        if friend.hiddenInCompetition {
-                            Text(strings.friendHiddenBadge)
-                                .font(.caption2)
-                                .foregroundStyle(SkiPalette.orange)
-                        }
+                        Spacer()
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {

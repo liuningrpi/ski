@@ -10,6 +10,8 @@
 		9E8DA8CF2F58B77300F9ED49 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 9E8DA8CE2F58B77300F9ED49 /* FirebaseAuth */; };
 		9E8DA8D12F58B77300F9ED49 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 9E8DA8D02F58B77300F9ED49 /* FirebaseFirestore */; };
 		9E8DA8D42F58B7BA00F9ED49 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 9E8DA8D32F58B7BA00F9ED49 /* GoogleSignIn */; };
+		A10000012F00000100ABCDEF /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = A10000032F00000100ABCDEF /* FirebaseStorage */; };
+		A10000022F00000100ABCDEF /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = A10000042F00000100ABCDEF /* FirebaseAppCheck */; };
 		9E8DA9432F5B8A6300F9ED49 /* WatchSkiTracker Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 9E8DA9232F5B8A6200F9ED49 /* WatchSkiTracker Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -125,8 +127,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000022F00000100ABCDEF /* FirebaseAppCheck in Frameworks */,
 				9E8DA8CF2F58B77300F9ED49 /* FirebaseAuth in Frameworks */,
 				9E8DA8D12F58B77300F9ED49 /* FirebaseFirestore in Frameworks */,
+				A10000012F00000100ABCDEF /* FirebaseStorage in Frameworks */,
 				9E8DA8D42F58B7BA00F9ED49 /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -217,8 +221,10 @@
 			);
 			name = SkiTracker;
 			packageProductDependencies = (
+				A10000042F00000100ABCDEF /* FirebaseAppCheck */,
 				9E8DA8CE2F58B77300F9ED49 /* FirebaseAuth */,
 				9E8DA8D02F58B77300F9ED49 /* FirebaseFirestore */,
+				A10000032F00000100ABCDEF /* FirebaseStorage */,
 				9E8DA8D32F58B7BA00F9ED49 /* GoogleSignIn */,
 			);
 			productName = SkiTracker;
@@ -1067,6 +1073,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 9E8DA8D22F58B7BA00F9ED49 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
+		};
+		A10000032F00000100ABCDEF /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E8DA8CD2F58B77300F9ED49 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
+		};
+		A10000042F00000100ABCDEF /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E8DA8CD2F58B77300F9ED49 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppIntents
 import FirebaseCore
+import FirebaseAppCheck
 import GoogleSignIn
 import UserNotifications
 
@@ -9,6 +10,12 @@ import UserNotifications
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if DEBUG
+        AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
+        #else
+        // DeviceCheck does not require adding another signing entitlement. App Attest can replace it later.
+        AppCheck.setAppCheckProviderFactory(DeviceCheckProviderFactory())
+        #endif
         FirebaseApp.configure()
         UNUserNotificationCenter.current().delegate = self
         UIDevice.current.isBatteryMonitoringEnabled = true

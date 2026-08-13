@@ -5,7 +5,7 @@ import CoreLocation
 
 /// A single GPS point recorded during a skiing session.
 /// All fields are Codable for JSON serialization.
-struct TrackPoint: Codable, Identifiable {
+nonisolated struct TrackPoint: Codable, Identifiable, Sendable {
     let id: UUID
     let latitude: Double
     let longitude: Double
@@ -51,8 +51,22 @@ struct TrackPoint: Codable, Identifiable {
 
 // MARK: - TrackSession
 
+nonisolated struct TrackSessionMetricSummary: Codable, Sendable {
+    let totalDistanceKm: Double
+    let maxSpeedKmh: Double
+    let avgSpeedKmh: Double
+    let maxAltitude: Double
+    let minAltitude: Double
+    let elevationDrop: Double
+    let totalVerticalDrop: Double
+    let runCount: Int
+    let liftCount: Int
+    let pointCount: Int
+    let segmentCount: Int
+}
+
 /// Represents one complete skiing recording session.
-struct TrackSession: Codable, Identifiable {
+nonisolated struct TrackSession: Codable, Identifiable, Sendable {
     let id: UUID
     let startedAt: Date
     var endedAt: Date?
@@ -63,6 +77,7 @@ struct TrackSession: Codable, Identifiable {
     var remoteTrackVersion: Int?
     var remotePointCount: Int?
     var remoteSegmentCount: Int?
+    var remoteSummary: TrackSessionMetricSummary?
 
     init(startedAt: Date, deviceInfo: String? = nil) {
         self.id = UUID()
@@ -75,6 +90,7 @@ struct TrackSession: Codable, Identifiable {
         self.remoteTrackVersion = nil
         self.remotePointCount = nil
         self.remoteSegmentCount = nil
+        self.remoteSummary = nil
     }
 
     /// Manual initializer for Firestore deserialization
@@ -89,17 +105,19 @@ struct TrackSession: Codable, Identifiable {
         self.remoteTrackVersion = nil
         self.remotePointCount = nil
         self.remoteSegmentCount = nil
+        self.remoteSummary = nil
     }
 
     var needsRemoteTrackHydration: Bool {
-        remoteTrackVersion != nil && points.isEmpty && segments.isEmpty
+        remoteTrackVersion != nil && points.isEmpty
     }
 
     // MARK: - Segment Statistics
 
     /// Number of skiing runs
     var runCount: Int {
-        segments.filter {
+        if segments.isEmpty, let remoteSummary { return remoteSummary.runCount }
+        return segments.filter {
             $0.type == .skiing &&
             $0.totalDistanceMeters >= SkiMetrics.minRecordedRunDistanceMeters
         }.count
@@ -107,12 +125,14 @@ struct TrackSession: Codable, Identifiable {
 
     /// Number of lift rides
     var liftCount: Int {
-        segments.filter { $0.type == .lift }.count
+        if segments.isEmpty, let remoteSummary { return remoteSummary.liftCount }
+        return segments.filter { $0.type == .lift }.count
     }
 
     /// Total vertical drop from skiing segments only
     var totalVerticalDrop: Double {
-        segments
+        if segments.isEmpty, let remoteSummary { return remoteSummary.totalVerticalDrop }
+        return segments
             .filter {
                 $0.type == .skiing &&
                 $0.totalDistanceMeters >= SkiMetrics.minRecordedRunDistanceMeters
@@ -136,7 +156,6 @@ struct TrackSession: Codable, Identifiable {
     /// Delete a specific run by ID
     mutating func deleteRun(id: UUID) {
         segments.removeAll { $0.id == id }
-        LoggingService.shared.logRunDeleted(runId: id, reason: "User deleted from history")
     }
 
     // MARK: - Computed Statistics
@@ -163,7 +182,8 @@ struct TrackSession: Codable, Identifiable {
 
     /// Total distance in meters, with teleport filtering (skip single-step > 100m)
     var totalDistanceMeters: Double {
-        SkiMetrics.totalDistanceMeters(points: points)
+        if points.isEmpty, let remoteSummary { return remoteSummary.totalDistanceKm * 1000 }
+        return SkiMetrics.totalDistanceMeters(points: points)
     }
 
     /// Total distance in kilometers
@@ -173,26 +193,31 @@ struct TrackSession: Codable, Identifiable {
 
     /// Maximum speed in km/h (only valid speed values, filter > 60 m/s ≈ 216 km/h)
     var maxSpeedKmh: Double {
-        SkiMetrics.peakSpeedKmh(points: points)
+        if points.isEmpty, let remoteSummary { return remoteSummary.maxSpeedKmh }
+        return SkiMetrics.peakSpeedKmh(points: points)
     }
 
     /// Average speed in km/h
     var avgSpeedKmh: Double {
-        SkiMetrics.averageSpeedKmh(points: points)
+        if points.isEmpty, let remoteSummary { return remoteSummary.avgSpeedKmh }
+        return SkiMetrics.averageSpeedKmh(points: points)
     }
 
     /// Maximum altitude in meters
     var maxAltitude: Double {
-        points.map { $0.altitude }.max() ?? 0
+        if points.isEmpty, let remoteSummary { return remoteSummary.maxAltitude }
+        return points.map { $0.altitude }.max() ?? 0
     }
 
     /// Minimum altitude in meters
     var minAltitude: Double {
-        points.map { $0.altitude }.min() ?? 0
+        if points.isEmpty, let remoteSummary { return remoteSummary.minAltitude }
+        return points.map { $0.altitude }.min() ?? 0
     }
 
     /// Elevation drop (max - min)
     var elevationDrop: Double {
-        maxAltitude - minAltitude
+        if points.isEmpty, let remoteSummary { return remoteSummary.elevationDrop }
+        return maxAltitude - minAltitude
     }
 }

@@ -10,6 +10,7 @@ struct ContentView: View {
     @EnvironmentObject var tracker: LocationTracker
     @EnvironmentObject var sessionStore: SessionStore
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject private var authService = AuthService.shared
 
     @State private var showHistory = false
     @State private var showLeaderboard = false
@@ -29,6 +30,7 @@ struct ContentView: View {
     @State private var isLivePanelCollapsed = false
     @State private var isLiveMapAutoFollow = true
     @State private var liveMapRecenterTrigger = 0
+    @State private var initiallySyncedUID: String?
 
     var body: some View {
         let strings = settings.strings
@@ -98,6 +100,12 @@ struct ContentView: View {
             } message: {
                 Text(strings.stopConfirmMessage)
             }
+            .task {
+                await syncAuthenticatedUserIfNeeded()
+            }
+            .onReceive(authService.objectWillChange) { _ in
+                Task { await syncAuthenticatedUserIfNeeded() }
+            }
             .onAppear {
                 tracker.segmenter.onSegmentCompleted = nil
             }
@@ -114,6 +122,24 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    @MainActor
+    private func syncAuthenticatedUserIfNeeded() async {
+        guard authService.isAuthStateResolved else { return }
+        guard let user = authService.currentUser else {
+            initiallySyncedUID = nil
+            return
+        }
+        guard initiallySyncedUID != user.uid else { return }
+        initiallySyncedUID = user.uid
+
+        await FirestoreService.shared.saveUserProfile(user)
+        await FirestoreService.shared.uploadAllSessions(sessionStore.sessions, uid: user.uid)
+        let uploadError = FirestoreService.shared.errorMessage
+        let remoteSessions = await FirestoreService.shared.downloadSessions(uid: user.uid)
+        sessionStore.mergeRemote(remoteSessions)
+        if let uploadError { FirestoreService.shared.errorMessage = uploadError }
     }
 
     // MARK: - Top Chrome
@@ -659,8 +685,12 @@ struct ContentView: View {
 
     private func persistFullSession() {
         let session = tracker.buildSession()
-        guard session.points.count >= 2 else { return }
-        sessionStore.save(session)
+        guard session.points.count >= 2 else {
+            tracker.discardCurrentRecording()
+            return
+        }
+        guard sessionStore.save(session) else { return }
+        tracker.markCurrentRecordingPersisted()
 
         if let user = AuthService.shared.currentUser {
             Task {

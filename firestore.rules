@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      // Friend and leaderboard screens fetch profiles by known UID; list access remains blocked.
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update, delete: if isOwner(uid);
+
+      match /sessions/{sessionID} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /friends/{friendUID} {
+        allow read: if isOwner(uid);
+        allow create, update, delete: if signedIn()
+          && (request.auth.uid == uid || request.auth.uid == friendUID);
+      }
+    }
+
+    match /feedback_rate_limits/{counterID} {
+      allow get: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow list: if false;
+      allow delete: if false;
+    }
+
+    match /user_feedback/{feedbackID} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.feedback is string
+        && request.resource.data.feedback.size() <= 10000
+        && request.resource.data.screenshotCount <= 2;
+      allow read, update, delete: if false;
+    }
+
+    match /logs/{logID} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    // Squad is currently hidden in the UI. These rules preserve the existing signed-in prototype.
+    match /squadSessions/{sessionID} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.captainUID == request.auth.uid;
+      allow update, delete: if signedIn();
+
+      match /{subcollection}/{documentID} {
+        allow read, write: if signedIn();
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

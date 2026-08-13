@@ -1,7 +1,7 @@
 import Foundation
 import CoreLocation
 
-enum SkiMetrics {
+nonisolated enum SkiMetrics {
 
     // Ignore short fragments; 200 ft ~= 60.96 m.
     static let minRecordedRunDistanceMeters = 60.96

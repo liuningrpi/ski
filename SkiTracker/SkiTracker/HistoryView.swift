@@ -873,8 +873,16 @@ struct DaySummaryView: View {
     }
 
     private func deleteDay() {
+        let deletedSessions = dayGroup.sessions
         for session in dayGroup.sessions {
             sessionStore.delete(session)
+        }
+        if let user = authService.currentUser {
+            Task {
+                for session in deletedSessions {
+                    await FirestoreService.shared.deleteSession(session, uid: user.uid)
+                }
+            }
         }
         dismiss()
     }
@@ -1352,6 +1360,10 @@ struct SessionDetailView: View {
                    let hydrated = await FirestoreService.shared.hydrateSessionTrack(session, uid: user.uid) {
                     await MainActor.run {
                         session = hydrated
+                        sessionStore.update(hydrated)
+                    }
+                    if (hydrated.remoteTrackVersion ?? TrackArchiveCodec.schemaVersion) < TrackArchiveCodec.schemaVersion {
+                        try? await FirestoreService.shared.uploadSession(hydrated, uid: user.uid)
                     }
                 }
                 await loadSessionHeartRate()
@@ -1375,7 +1387,13 @@ struct SessionDetailView: View {
     }
 
     private func deleteSession() {
+        let deletedSession = session
         sessionStore.delete(session)
+        if let user = authService.currentUser {
+            Task {
+                await FirestoreService.shared.deleteSession(deletedSession, uid: user.uid)
+            }
+        }
         dismiss()
     }
 

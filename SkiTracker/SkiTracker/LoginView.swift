@@ -110,8 +110,6 @@ struct LoginView: View {
                     // Save user profile to Firestore
                     if let user = authService.currentUser {
                         Task {
-                            await FirestoreService.shared.saveUserProfile(user)
-                            await FirestoreService.shared.uploadAllSessions(sessionStore.sessions, uid: user.uid)
                             await FriendService.shared.processPendingInviteIfNeeded(currentUser: user)
                         }
                     }
@@ -191,6 +189,12 @@ struct AccountView: View {
                 Button {
                     Task {
                         await firestoreService.uploadAllSessions(sessionStore.sessions, uid: user.uid)
+                        let uploadError = firestoreService.errorMessage
+                        let remoteSessions = await firestoreService.downloadSessions(uid: user.uid)
+                        await MainActor.run {
+                            sessionStore.mergeRemote(remoteSessions)
+                            if let uploadError { firestoreService.errorMessage = uploadError }
+                        }
                     }
                 } label: {
                     HStack {

@@ -4,7 +4,7 @@ import Combine
 
 // MARK: - Skiing State
 
-enum SkiingState: String, Codable {
+nonisolated enum SkiingState: String, Codable, Sendable {
     case idle = "idle"           // Not started or paused
     case skiing = "skiing"       // Actively skiing downhill
     case lift = "lift"           // On ski lift going up
@@ -13,7 +13,7 @@ enum SkiingState: String, Codable {
 
 // MARK: - Run Segment
 
-struct RunSegment: Codable, Identifiable {
+nonisolated struct RunSegment: Codable, Identifiable, Sendable {
     let id: UUID
     let type: SkiingState
     let startTime: Date
@@ -26,6 +26,14 @@ struct RunSegment: Codable, Identifiable {
         self.startTime = startTime
         self.endTime = nil
         self.points = []
+    }
+
+    init(id: UUID, type: SkiingState, startTime: Date, endTime: Date?, points: [TrackPoint]) {
+        self.id = id
+        self.type = type
+        self.startTime = startTime
+        self.endTime = endTime
+        self.points = points
     }
 
     // MARK: - Computed Properties

@@ -1,146 +1,198 @@
 import Foundation
 import Combine
+import CoreLocation
 
-// MARK: - SessionStore
-
-/// Handles reading and writing TrackSession data as JSON files
-/// in the app's Documents directory. Supports multiple sessions.
+/// Persists each session independently so one save never rewrites the user's full history.
+@MainActor
 final class SessionStore: ObservableObject {
-
-    // MARK: - Published
-
-    /// All saved sessions, sorted by date (newest first)
     @Published var sessions: [TrackSession] = []
 
-    // MARK: - Constants
-
-    private static let fileName = "ski_sessions.json"
-
-    // MARK: - Init
+    private static let legacyFileName = "ski_sessions.json"
+    private let fileManager = FileManager.default
 
     init() {
         sessions = Self.loadAll()
+        recoverInterruptedRecording()
     }
 
-    // MARK: - File Path
-
-    private static var fileURL: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docs.appendingPathComponent(fileName)
-    }
-
-    // MARK: - Save
-
-    /// Save a new session
-    func save(_ session: TrackSession) {
-        var allSessions = sessions
-        allSessions.insert(session, at: 0) // Add to beginning (newest first)
-        saveAll(allSessions)
-    }
-
-    /// Save all sessions to disk
-    private func saveAll(_ allSessions: [TrackSession]) {
+    @discardableResult
+    func save(_ session: TrackSession) -> Bool {
         do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(allSessions)
-            try data.write(to: Self.fileURL, options: .atomic)
-            DispatchQueue.main.async {
-                self.sessions = allSessions
+            try Self.write(session)
+            if let index = sessions.firstIndex(where: { $0.id == session.id }) {
+                sessions[index] = session
+            } else {
+                sessions.append(session)
             }
-            print("[SessionStore] Saved \(allSessions.count) sessions to \(Self.fileURL.path)")
+            sessions.sort { $0.startedAt > $1.startedAt }
+            return true
         } catch {
-            print("[SessionStore] Save failed: \(error)")
+            print("[SessionStore] Save failed for \(session.id): \(error)")
+            return false
         }
     }
 
-    // MARK: - Load
-
-    /// Load all sessions from disk
     static func loadAll() -> [TrackSession] {
-        // First try to load from new format
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            do {
-                let data = try Data(contentsOf: fileURL)
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                let sessions = try decoder.decode([TrackSession].self, from: data)
-                print("[SessionStore] Loaded \(sessions.count) sessions.")
-                return sessions
-            } catch {
-                print("[SessionStore] Load failed: \(error)")
-            }
+        migrateLegacyFilesIfNeeded()
+        do {
+            try ensureDirectory()
+            let urls = try FileManager.default.contentsOfDirectory(
+                at: sessionsDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+            let decoder = makeDecoder()
+            let loaded = urls
+                .filter { $0.pathExtension == "json" }
+                .compactMap { url -> TrackSession? in
+                    do {
+                        return try decoder.decode(TrackSession.self, from: Data(contentsOf: url))
+                    } catch {
+                        print("[SessionStore] Ignoring unreadable session \(url.lastPathComponent): \(error)")
+                        return nil
+                    }
+                }
+                .sorted { $0.startedAt > $1.startedAt }
+            print("[SessionStore] Loaded \(loaded.count) sessions.")
+            return loaded
+        } catch {
+            print("[SessionStore] Load failed: \(error)")
+            return []
         }
-
-        // Try to migrate from old single-session format
-        let oldFileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("last_session.json")
-        if FileManager.default.fileExists(atPath: oldFileURL.path) {
-            do {
-                let data = try Data(contentsOf: oldFileURL)
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                let session = try decoder.decode(TrackSession.self, from: data)
-                print("[SessionStore] Migrated 1 session from old format.")
-                // Delete old file after migration
-                try? FileManager.default.removeItem(at: oldFileURL)
-                return [session]
-            } catch {
-                print("[SessionStore] Migration failed: \(error)")
-            }
-        }
-
-        print("[SessionStore] No saved sessions found.")
-        return []
     }
 
-    /// Reload from disk
     func reload() {
         sessions = Self.loadAll()
     }
 
-    // MARK: - Delete
-
-    /// Delete a specific session
     func delete(_ session: TrackSession) {
-        var allSessions = sessions
-        allSessions.removeAll { $0.id == session.id }
-        saveAll(allSessions)
+        try? fileManager.removeItem(at: Self.sessionURL(session.id))
+        sessions.removeAll { $0.id == session.id }
     }
 
-    /// Delete all sessions
     func deleteAll() {
-        try? FileManager.default.removeItem(at: Self.fileURL)
-        DispatchQueue.main.async {
-            self.sessions = []
+        for session in sessions {
+            try? fileManager.removeItem(at: Self.sessionURL(session.id))
         }
+        sessions = []
     }
 
-    // MARK: - Update
-
-    /// Update a session (e.g., after deleting a run)
     func update(_ session: TrackSession) {
-        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
-            var allSessions = sessions
-            allSessions[index] = session
-            saveAll(allSessions)
-        }
+        _ = save(session)
     }
 
-    /// Delete a run from a session
     func deleteRun(runId: UUID, fromSession sessionId: UUID) {
-        if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
-            var session = sessions[index]
-            session.deleteRun(id: runId)
-            update(session)
+        guard var session = sessions.first(where: { $0.id == sessionId }) else { return }
+        session.deleteRun(id: runId)
+        update(session)
+    }
+
+    /// Adds cloud-only summaries while preserving richer local tracks for matching IDs.
+    func mergeRemote(_ remoteSessions: [TrackSession]) {
+        var merged = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
+        for remote in remoteSessions {
+            if let local = merged[remote.id], !local.points.isEmpty {
+                continue
+            }
+            merged[remote.id] = remote
+            _ = try? Self.write(remote)
+        }
+        sessions = merged.values.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    var lastSession: TrackSession? { sessions.first }
+
+    private func recoverInterruptedRecording() {
+        guard var recovered = RecordingJournal.shared.recoverInterruptedSession() else { return }
+        let segmenter = RunSegmenter()
+        for point in recovered.points {
+            let location = CLLocation(
+                coordinate: point.coordinate,
+                altitude: point.altitude,
+                horizontalAccuracy: point.horizontalAccuracy,
+                verticalAccuracy: point.verticalAccuracy,
+                course: point.course,
+                speed: point.speed,
+                timestamp: point.timestamp
+            )
+            segmenter.processLocation(location)
+        }
+        segmenter.finalizeCurrentSegment(forceIncludeCurrentSkiing: true)
+        recovered.segments = segmenter.segments
+        if sessions.contains(where: { $0.id == recovered.id }) || save(recovered) {
+            RecordingJournal.shared.discardActiveJournal()
+            print("[SessionStore] Recovered interrupted session \(recovered.id).")
         }
     }
 
-    // MARK: - Convenience
+    private static var sessionsDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("Sessions", isDirectory: true)
+    }
 
-    /// The most recent session (for backward compatibility)
-    var lastSession: TrackSession? {
-        sessions.first
+    private static func sessionURL(_ id: UUID) -> URL {
+        sessionsDirectory.appendingPathComponent("\(id.uuidString).json")
+    }
+
+    private static func ensureDirectory() throws {
+        try FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableURL = sessionsDirectory
+        try? mutableURL.setResourceValues(values)
+    }
+
+    private static func write(_ session: TrackSession) throws {
+        try ensureDirectory()
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(session)
+        try data.write(
+            to: sessionURL(session.id),
+            options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        )
+    }
+
+    private static func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    private static func migrateLegacyFilesIfNeeded() {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let decoder = makeDecoder()
+        var recovered: [TrackSession] = []
+        let multiURL = documents.appendingPathComponent(legacyFileName)
+        if let data = try? Data(contentsOf: multiURL),
+           let sessions = try? decoder.decode([TrackSession].self, from: data) {
+            recovered.append(contentsOf: sessions)
+        }
+        let singleURL = documents.appendingPathComponent("last_session.json")
+        if let data = try? Data(contentsOf: singleURL),
+           let session = try? decoder.decode(TrackSession.self, from: data),
+           !recovered.contains(where: { $0.id == session.id }) {
+            recovered.append(session)
+        }
+
+        guard !recovered.isEmpty else { return }
+        do {
+            try ensureDirectory()
+            let existingIDs = Set((try FileManager.default.contentsOfDirectory(
+                at: sessionsDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )).compactMap { url -> UUID? in
+                guard let data = try? Data(contentsOf: url),
+                      let session = try? decoder.decode(TrackSession.self, from: data) else { return nil }
+                return session.id
+            })
+            for session in recovered where !existingIDs.contains(session.id) { try write(session) }
+            try? FileManager.default.removeItem(at: multiURL)
+            try? FileManager.default.removeItem(at: singleURL)
+            print("[SessionStore] Migrated \(recovered.count) legacy sessions.")
+        } catch {
+            print("[SessionStore] Legacy migration failed; source files retained: \(error)")
+        }
     }
 }

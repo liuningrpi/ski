@@ -44,6 +44,7 @@ final class LocationTracker: NSObject, ObservableObject {
 
     /// Timestamp when tracking started
     private(set) var trackingStartDate: Date?
+    private var trackingSessionID: UUID?
 
     // MARK: - Configuration Constants
 
@@ -117,7 +118,11 @@ final class LocationTracker: NSObject, ObservableObject {
 
         locations.removeAll()
         segmenter.reset()
-        trackingStartDate = Date()
+        let startedAt = Date()
+        let sessionID = UUID()
+        trackingStartDate = startedAt
+        trackingSessionID = sessionID
+        RecordingJournal.shared.begin(sessionID: sessionID, startedAt: startedAt, deviceInfo: UIDevice.current.model)
         isTracking = true
         isPaused = false
         currentResortName = nil
@@ -145,6 +150,8 @@ final class LocationTracker: NSObject, ObservableObject {
         configureBackgroundUpdates()
         // User explicitly stopped: persist an in-progress descending run even if not yet transitioned.
         segmenter.finalizeCurrentSegment(forceIncludeCurrentSkiing: true)
+        RecordingJournal.shared.updateResortName(currentResortName)
+        RecordingJournal.shared.synchronize()
 
         LoggingService.shared.logSessionEnd(
             runCount: segmenter.skiingRunCount,
@@ -173,6 +180,7 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Build a TrackSession from the current recorded data
     func buildSession() -> TrackSession {
         var session = TrackSession(
+            id: trackingSessionID ?? UUID(),
             startedAt: trackingStartDate ?? Date(),
             deviceInfo: UIDevice.current.model
         )
@@ -181,6 +189,16 @@ final class LocationTracker: NSObject, ObservableObject {
         session.points = locations.map { TrackPoint(from: $0) }
         session.segments = segmenter.segments
         return session
+    }
+
+    func markCurrentRecordingPersisted() {
+        RecordingJournal.shared.discardActiveJournal()
+        trackingSessionID = nil
+    }
+
+    func discardCurrentRecording() {
+        RecordingJournal.shared.discardActiveJournal()
+        trackingSessionID = nil
     }
 
     // MARK: - Helpers
@@ -244,6 +262,7 @@ final class LocationTracker: NSObject, ObservableObject {
 
         currentResortMatch = match
         currentResortName = match.resort.name
+        RecordingJournal.shared.updateResortName(match.resort.name)
 
         if lastWelcomedResortName != match.resort.name {
             lastWelcomedResortName = match.resort.name
@@ -298,6 +317,7 @@ extension LocationTracker: CLLocationManagerDelegate {
 
             // Feed to segmenter for automatic run detection
             segmenter.processLocation(location)
+            RecordingJournal.shared.append(location)
 
             DispatchQueue.main.async {
                 self.locations.append(location)

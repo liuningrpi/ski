@@ -1,0 +1,153 @@
+[debug] [2026-08-08T09:36:27.772Z] ----------------------------------------------------------------------
+[debug] [2026-08-08T09:36:27.773Z] Command:       /usr/local/bin/node /Users/ningliu/.npm-global/bin/firebase deploy --dry-run --only firestore:rules,firestore:indexes,storage --project skitracker-b5ee2
+[debug] [2026-08-08T09:36:27.773Z] CLI Version:   14.12.1
+[debug] [2026-08-08T09:36:27.773Z] Platform:      darwin
+[debug] [2026-08-08T09:36:27.773Z] Node Version:  v22.17.0
+[debug] [2026-08-08T09:36:27.773Z] Time:          Sat Aug 08 2026 17:36:27 GMT+0800 (China Standard Time)
+[debug] [2026-08-08T09:36:27.773Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-08-08T09:36:27.774Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-08-08T09:36:27.866Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-08T09:36:27.866Z] > authorizing via signed-in user (pulseai@pulseaisolution.com)
+[debug] [2026-08-08T09:36:27.866Z] [iam] checking project skitracker-b5ee2 for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebaserules.releases.create","firebaserules.releases.update","firebaserules.rulesets.create"]
+[debug] [2026-08-08T09:36:27.866Z] Checked if tokens are valid: false, expires at: 1762993230229
+[debug] [2026-08-08T09:36:27.866Z] Checked if tokens are valid: false, expires at: 1762993230229
+[debug] [2026-08-08T09:36:27.867Z] > refreshing access token with scopes: []
+[debug] [2026-08-08T09:36:27.867Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-08-08T09:36:27.867Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-08T09:36:28.421Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-08-08T09:36:28.422Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2026-08-08T09:37:44.660Z] *** [apiv2] error from fetch(https://www.googleapis.com/oauth2/v3/token, {"headers":{},"method":"POST","body":{"_overheadLength":545,"_valueLength":212,"_valuesToMeasure":[],"writable":false,"readable":true,"dataSize":0,"maxDataSize":2097152,"pauseStreams":true,"_released":true,"_streams":[],"_currentStream":null,"_insideLoop":false,"_pendingNext":false,"_boundary":"--------------------------32c8e91e3264577ffb8bcbf7","_events":{},"_eventsCount":1}}): FetchError: request to https://www.googleapis.com/oauth2/v3/token failed, reason: 
+[error] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2026-08-08T09:37:44.660Z] [iam] error while checking permissions, command may fail: Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[info] 
+[info] === Deploying to 'skitracker-b5ee2'...
+[info] 
+[info] i  deploying storage, firestore 
+[info] i  storage: ensuring required API firebasestorage.googleapis.com is enabled... 
+[debug] [2026-08-08T09:37:44.666Z] Checked if tokens are valid: false, expires at: 1762993230229
+[debug] [2026-08-08T09:37:44.667Z] Checked if tokens are valid: false, expires at: 1762993230229
+[debug] [2026-08-08T09:37:44.667Z] > refreshing access token with scopes: []
+[debug] [2026-08-08T09:37:44.667Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-08-08T09:37:44.668Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-08T13:51:03.005Z] ----------------------------------------------------------------------
+[debug] [2026-08-08T13:51:03.008Z] Command:       /usr/local/bin/node /Users/ningliu/.npm-global/bin/firebase login --reauth
+[debug] [2026-08-08T13:51:03.008Z] CLI Version:   14.12.1
+[debug] [2026-08-08T13:51:03.008Z] Platform:      darwin
+[debug] [2026-08-08T13:51:03.008Z] Node Version:  v22.17.0
+[debug] [2026-08-08T13:51:03.009Z] Time:          Sat Aug 08 2026 21:51:03 GMT+0800 (China Standard Time)
+[debug] [2026-08-08T13:51:03.009Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://accounts.google.com/o/oauth2/auth?client_id=563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com&scope=email%20openid%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloudplatformprojects.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ffirebase%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform&response_type=code&state=168336686&redirect_uri=http%3A%2F%2Flocalhost%3A9005&login_hint=pulseai%40pulseaisolution.com
+[info] 
+[info] Waiting for authentication...
+[debug] [2026-08-08T13:51:13.239Z] ----------------------------------------------------------------------
+[debug] [2026-08-08T13:51:13.239Z] Command:       /usr/local/bin/node /Users/ningliu/.npm-global/bin/firebase login --reauth
+[debug] [2026-08-08T13:51:13.240Z] CLI Version:   14.12.1
+[debug] [2026-08-08T13:51:13.240Z] Platform:      darwin
+[debug] [2026-08-08T13:51:13.240Z] Node Version:  v22.17.0
+[debug] [2026-08-08T13:51:13.240Z] Time:          Sat Aug 08 2026 21:51:13 GMT+0800 (China Standard Time)
+[debug] [2026-08-08T13:51:13.240Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://accounts.google.com/o/oauth2/auth?client_id=563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com&scope=email%20openid%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloudplatformprojects.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ffirebase%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform&response_type=code&state=74192114&redirect_uri=http%3A%2F%2Flocalhost%3A9005&login_hint=pulseai%40pulseaisolution.com
+[info] 
+[info] Waiting for authentication...
+[debug] [2026-08-08T13:59:42.521Z] >>> [apiv2][query] POST https://accounts.google.com/o/oauth2/token [none]
+[debug] [2026-08-08T13:59:42.522Z] >>> [apiv2][body] POST https://accounts.google.com/o/oauth2/token [omitted]
+[debug] [2026-08-08T14:00:57.572Z] *** [apiv2] error from fetch(https://accounts.google.com/o/oauth2/token, {"headers":{},"method":"POST","body":{"_overheadLength":543,"_valueLength":208,"_valuesToMeasure":[],"writable":false,"readable":true,"dataSize":0,"maxDataSize":2097152,"pauseStreams":true,"_released":true,"_streams":[],"_currentStream":null,"_insideLoop":false,"_pendingNext":false,"_boundary":"--------------------------f8e43d50a1770f54beee4b06","_events":{},"_eventsCount":1}}): FetchError: request to https://accounts.google.com/o/oauth2/token failed, reason: connect ETIMEDOUT 108.177.97.84:443
+[debug] [2026-08-08T14:00:57.574Z] Token Fetch Error: FirebaseError: Failed to make request to https://accounts.google.com/o/oauth2/token
+    at RetryOperation._fn (/Users/ningliu/.npm-global/lib/node_modules/firebase-tools/lib/apiv2.js:261:31)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2026-08-08T14:00:57.589Z] >>> [apiv2][query] POST https://auth.firebase.tools/attest [none]
+[debug] [2026-08-08T14:00:57.589Z] >>> [apiv2][body] POST https://auth.firebase.tools/attest {"session_id":"2b5f1f7f-cc7b-4af1-a098-4f4a8dcb5914"}
+[debug] [2026-08-08T14:00:58.529Z] <<< [apiv2][status] POST https://auth.firebase.tools/attest 200
+[debug] [2026-08-08T14:00:58.529Z] <<< [apiv2][body] POST https://auth.firebase.tools/attest {"token":"V2KywUpBCFais45go1uom4v-0ADzwAmtgYYVc5ytZSs"}
+[info] 
+[info] To sign in to the Firebase CLI:
+[info] 
+[info] 1. Take note of your session ID:
+[info] 
+[info]    2B5F1
+[info] 
+[info] 2. Visit the URL below on any device and follow the instructions to get your code:
+[info] 
+[info]    https://auth.firebase.tools/login?code_challenge=iyq_X9tnakTLIsInVcLq4RsrIWlGbygvVL4G5tBjPwo&session=2b5f1f7f-cc7b-4af1-a098-4f4a8dcb5914&attest=V2KywUpBCFais45go1uom4v-0ADzwAmtgYYVc5ytZSs
+[info] 
+[info] 3. Paste or enter the authorization code below once you have it:
+[info] 
+[debug] [2026-08-08T14:01:23.770Z] ExitPromptError: User force closed the prompt with SIGINT
+    at Interface.sigint (/Users/ningliu/.npm-global/lib/node_modules/firebase-tools/node_modules/@inquirer/core/dist/commonjs/lib/create-prompt.js:101:37)
+    at Interface.emit (node:events:518:28)
+    at Interface.emit (node:domain:489:12)
+    at [_ttyWrite] [as _ttyWrite] (node:internal/readline/interface:1132:18)
+    at ReadStream.onkeypress (node:internal/readline/interface:271:20)
+    at ReadStream.emit (node:events:530:35)
+    at ReadStream.emit (node:domain:489:12)
+    at emitKeys (node:internal/readline/utils:370:14)
+    at emitKeys.next (<anonymous>)
+    at ReadStream.onData (node:internal/readline/emitKeypressEvents:64:36)
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-08-08T14:01:26.230Z] ----------------------------------------------------------------------
+[debug] [2026-08-08T14:01:26.231Z] Command:       /usr/local/bin/node /Users/ningliu/.npm-global/bin/firebase login --reauth
+[debug] [2026-08-08T14:01:26.231Z] CLI Version:   14.12.1
+[debug] [2026-08-08T14:01:26.231Z] Platform:      darwin
+[debug] [2026-08-08T14:01:26.231Z] Node Version:  v22.17.0
+[debug] [2026-08-08T14:01:26.231Z] Time:          Sat Aug 08 2026 22:01:26 GMT+0800 (China Standard Time)
+[debug] [2026-08-08T14:01:26.232Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://accounts.google.com/o/oauth2/auth?client_id=563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com&scope=email%20openid%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloudplatformprojects.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ffirebase%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform&response_type=code&state=754440928&redirect_uri=http%3A%2F%2Flocalhost%3A9005&login_hint=pulseai%40pulseaisolution.com
+[info] 
+[info] Waiting for authentication...
+[debug] [2026-08-08T14:01:41.952Z] >>> [apiv2][query] POST https://accounts.google.com/o/oauth2/token [none]
+[debug] [2026-08-08T14:01:41.952Z] >>> [apiv2][body] POST https://accounts.google.com/o/oauth2/token [omitted]
+[debug] [2026-08-08T14:02:56.991Z] *** [apiv2] error from fetch(https://accounts.google.com/o/oauth2/token, {"headers":{},"method":"POST","body":{"_overheadLength":543,"_valueLength":208,"_valuesToMeasure":[],"writable":false,"readable":true,"dataSize":0,"maxDataSize":2097152,"pauseStreams":true,"_released":true,"_streams":[],"_currentStream":null,"_insideLoop":false,"_pendingNext":false,"_boundary":"--------------------------1a5a2afd6ae74fdc48a6b6ec","_events":{},"_eventsCount":1}}): FetchError: request to https://accounts.google.com/o/oauth2/token failed, reason: connect ETIMEDOUT 108.177.97.84:443
+[debug] [2026-08-08T14:02:56.994Z] Token Fetch Error: FirebaseError: Failed to make request to https://accounts.google.com/o/oauth2/token
+    at RetryOperation._fn (/Users/ningliu/.npm-global/lib/node_modules/firebase-tools/lib/apiv2.js:261:31)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2026-08-08T14:02:57.007Z] >>> [apiv2][query] POST https://auth.firebase.tools/attest [none]
+[debug] [2026-08-08T14:02:57.007Z] >>> [apiv2][body] POST https://auth.firebase.tools/attest {"session_id":"cf1c0f6b-db3b-41f9-90f1-a48e2d04aba9"}
+[debug] [2026-08-08T14:02:57.544Z] <<< [apiv2][status] POST https://auth.firebase.tools/attest 200
+[debug] [2026-08-08T14:02:57.544Z] <<< [apiv2][body] POST https://auth.firebase.tools/attest {"token":"5U4hqqBKF-wajaW_6Uf-e2iJs7YOF66gWwxoN8YZ6jY"}
+[info] 
+[info] To sign in to the Firebase CLI:
+[info] 
+[info] 1. Take note of your session ID:
+[info] 
+[info]    CF1C0
+[info] 
+[info] 2. Visit the URL below on any device and follow the instructions to get your code:
+[info] 
+[info]    https://auth.firebase.tools/login?code_challenge=WMAMcHQvv8FTUflVM3fixVtjQdZN5zjDgutTqyABC4c&session=cf1c0f6b-db3b-41f9-90f1-a48e2d04aba9&attest=5U4hqqBKF-wajaW_6Uf-e2iJs7YOF66gWwxoN8YZ6jY
+[info] 
+[info] 3. Paste or enter the authorization code below once you have it:
+[info] 
+[debug] [2026-08-13T00:51:39.432Z] ExitPromptError: User force closed the prompt with SIGINT
+    at Interface.sigint (/Users/ningliu/.npm-global/lib/node_modules/firebase-tools/node_modules/@inquirer/core/dist/commonjs/lib/create-prompt.js:101:37)
+    at Interface.emit (node:events:518:28)
+    at Interface.emit (node:domain:489:12)
+    at [_ttyWrite] [as _ttyWrite] (node:internal/readline/interface:1132:18)
+    at ReadStream.onkeypress (node:internal/readline/interface:271:20)
+    at ReadStream.emit (node:events:530:35)
+    at ReadStream.emit (node:domain:489:12)
+    at emitKeys (node:internal/readline/utils:370:14)
+    at emitKeys.next (<anonymous>)
+    at ReadStream.onData (node:internal/readline/emitKeypressEvents:64:36)
+[error] 
+[error] Error: An unexpected error has occurred.
